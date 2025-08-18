@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Database-to-API Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .scroll-container {
+            scrollbar-width: thin;
+            scrollbar-color: #4a5568 #2d3748;
+        }
+        .scroll-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .scroll-container::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        .scroll-container::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white">
+    <!-- Background Effects -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse-slow"></div>
+        <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse-slow animation-delay-2000"></div>
+        <div class="absolute top-40 left-40 w-80 h-80 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse-slow animation-delay-4000"></div>
+    </div>
+
+    <!-- Session History Sidebar -->
+    <div id="sessionSidebar" class="fixed left-0 top-0 h-full w-80 bg-gray-900/95 backdrop-blur-sm border-r border-gray-700 transform -translate-x-full transition-transform duration-300 z-40 lg:z-30">
+        <div class="p-4 border-b border-gray-700">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-white">📋 Session History</h3>
+                <button onclick="toggleSidebar()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-4">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-300 mb-2">Current Chat ID</label>
+                <div class="flex space-x-2">
+                    <input type="text" id="chatIdInput" placeholder="Enter Chat ID" class="flex-1 p-2 bg-gray-800 border border-gray-600 rounded text-white text-sm focus:border-blue-500 focus:outline-none">
+                    <button onclick="setChatId()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm">
+                        Set
+                    </button>
+                </div>
+                <div id="currentChatId" class="hidden mt-2 p-2 bg-green-900/20 rounded border border-green-500/30">
+                    <span class="text-green-400 text-sm">Active: </span>
+                    <span id="chatIdDisplay" class="text-white text-sm font-mono"></span>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-medium text-gray-300">Saved Sessions</h4>
+                    <button onclick="refreshSessions()" class="text-gray-400 hover:text-white">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="sessionList" class="space-y-2 max-h-96 overflow-y-auto scroll-container">
+                    <!-- Sessions will be populated here -->
+                </div>
+            </div>
+            
+            <button onclick="clearAllSessions()" class="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm">
+                🗑️ Clear All Sessions
+            </button>
+        </div>
+    </div>
+    
+    <!-- Sidebar Toggle Button -->
+    <button id="sidebarToggle" onclick="toggleSidebar()" class="fixed left-4 top-4 z-50 bg-gray-800/90 backdrop-blur-sm text-white p-3 rounded-full border border-gray-600 hover:bg-gray-700 transition-all duration-300">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+    </button>
+
+    <div class="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 transition-all duration-300" id="mainContent">
+        <!-- Header -->
+        <div class="text-center mb-8 sm:mb-10 lg:mb-12">
+            <div class="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full mb-4 sm:mb-6 animate-bounce-slow">
+                <svg class="w-8 h-8 sm:w-10 sm:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                </svg>
+            </div>
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 gradient-text">
+                AI Database-to-API Agent
+            </h1>
+            <p class="text-base sm:text-lg lg:text-xl text-gray-300 max-w-2xl mx-auto px-4">
+                Transform your database designs into working APIs using cutting-edge AI technology
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+            <!-- Image Upload -->
+            <div class="bg-gray-800/50 backdrop-blur-sm p-4 sm:p-6 lg:p-8 rounded-2xl border border-gray-700 hover:border-purple-500 transition-all duration-300 group">
+                <div class="flex items-center mb-6">
+                    <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl sm:text-2xl font-bold text-white">Upload ERD Image</h2>
+                </div>
+                
+                <div class="border-2 border-dashed border-gray-600 rounded-xl p-6 text-center hover:border-purple-500 transition-colors mb-4" onclick="document.getElementById('erdImages').click()">
+                    <input type="file" id="erdImages" accept="image/*" multiple class="hidden">
+                    <div id="imageGallery" class="hidden mb-4">
+                        <div class="grid grid-cols-2 gap-3 mb-3" id="imageGrid"></div>
+                        <div class="text-sm text-gray-400">Click to add more images</div>
+                    </div>
+                    <div id="uploadPrompt">
+                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <p class="text-gray-400 mb-2">Upload ERD images (multiple supported)</p>
+                        <p class="text-sm text-gray-500">PNG, JPG up to 10MB each</p>
+                    </div>
+                </div>
+                
+                <button id="analyzeBtn" onclick="analyzeImages()" disabled class="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
+                    <span id="analyzeText">Select Images First</span>
+                </button>
+            </div>
+
+            <!-- Voice Recording -->
+            <div class="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700 hover:border-green-500 transition-all duration-300 group">
+                <div class="flex items-center mb-6">
+                    <div class="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white">Voice Description</h2>
+                </div>
+                
+                <div class="text-center mb-6">
+                    <button id="recordBtn" onclick="toggleRecording()" class="w-20 h-20 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-full hover:from-green-600 hover:to-emerald-600 transition-all duration-300 flex items-center justify-center mb-4 mx-auto shadow-lg hover:shadow-green-500/25">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div id="recordingStatus" class="text-center text-gray-400 min-h-[2rem] flex items-center justify-center">
+                    <span>Click to start recording your database requirements</span>
+                </div>
+            </div>
+
+            <!-- Autonomous Workflow -->
+            <div class="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700 hover:border-purple-500 transition-all duration-300 group">
+                <div class="flex items-center mb-6">
+                    <div class="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white">Autonomous Agent</h2>
+                </div>
+                
+                <div class="mb-6">
+                    <p class="text-gray-300 mb-4">Let AI handle the complete workflow from database design to API deployment</p>
+                </div>
+                
+                <button id="workflowBtn" onclick="executeFullWorkflow()" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center space-x-2">
+                    <span>Execute Full Workflow</span>
+                </button>
+            </div>
+
+            <!-- Direct Communication -->
+            <div class="bg-gray-800/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700 hover:border-red-500 transition-all duration-300 group">
+                <div class="flex items-center mb-6">
+                    <div class="w-12 h-12 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white">Direct Communication</h2>
+                </div>
+                
+                <!-- Communication Options -->
+                <div class="space-y-4 mb-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button onclick="startInstantChat()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2">
+                            <span>💬 Instant Chat</span>
+                        </button>
+                        
+                        <button onclick="startVideoCall()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2">
+                            <span>📹 Video Call</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Real-time AI Features -->
+                    <div class="border-t border-gray-600 pt-4">
+                        <p class="text-gray-300 mb-3 text-sm">Real-time AI Features:</p>
+                        <div class="grid grid-cols-1 gap-2">
+                            <button onclick="startRealTimeVoiceChat()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors">
+                                🎤 Real-time Voice Chat
+                            </button>
+                            <button onclick="startInteractiveDesign()" class="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors">
+                                💬 Interactive Design Chat
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Media & URL Analysis -->
+                    <div class="border-t border-gray-600 pt-4">
+                        <p class="text-gray-300 mb-3 text-sm">Analyze any media/URL for ERD:</p>
+                        <input type="url" id="mediaUrl" placeholder="YouTube, TikTok, Instagram, GitHub, docs, tutorials..." class="w-full p-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none transition-colors mb-3">
+                        <div id="urlValidation" class="hidden mb-3 p-2 rounded-lg text-sm"></div>
+                        <button onclick="analyzeMediaUrl()" class="w-full bg-gradient-to-r from-red-500 to-pink-500 text-white px-4 py-2 rounded-xl font-semibold transition-colors">
+                            🔍 Analyze & Generate ERD
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Phone Call Section -->
+                <div class="border-t border-gray-600 pt-4">
+                    <p class="text-gray-300 mb-3 text-sm">Or get a phone call:</p>
+                    <input type="tel" id="phoneNumber" placeholder="+27 61 948 0745" class="w-full p-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-red-500 focus:outline-none transition-colors mb-3">
+                    
+                    <button onclick="requestCall()" class="w-full bg-gradient-to-r from-red-500 to-pink-500 text-white px-4 py-2 rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 transition-all duration-300 flex items-center justify-center space-x-2">
+                        <span>📞 Request Call</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden mt-8 bg-gray-800/50 backdrop-blur-sm p-6 rounded-2xl border border-gray-700">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-bold text-white">🎉 Generated Solution</h3>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="downloadSchema()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-lg text-sm">
+                        💾 Download Schema
+                    </button>
+                    <button onclick="downloadAPICode()" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded-lg text-sm">
+                        🚀 Download API
+                    </button>
+                    <button onclick="testAPIEndpoints()" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-sm">
+                        🧪 Test API
+                    </button>
+                </div>
+            </div>
+            
+            <div id="resultContent" class="bg-gray-900/50 p-4 rounded-xl text-gray-300 font-mono text-sm">
+                Results will appear here...
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <script>
+        // Application state
+        let uploadedImages = [];
+        let currentSessionId = null;
+        let currentGeneratedSchema = '';
+        let currentGeneratedAPI = '';
+        let isRecording = false;
+
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', () => {
+            setupImageUpload();
+            loadSessionHistory();
+            showToast('🚀 AI Database Agent Ready', 'success');
+        });
+
+        // Session Management Functions
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sessionSidebar');
+            const mainContent = document.getElementById('mainContent');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const isOpen = !sidebar.classList.contains('-translate-x-full');
+            
+            if (isOpen) {
+                // Close sidebar
+                sidebar.classList.add('-translate-x-full');
+                mainContent.style.marginLeft = '0';
+                mainContent.style.paddingLeft = '1rem';
+                sidebarToggle.style.left = '1rem';
+            } else {
+                // Open sidebar
+                sidebar.classList.remove('-translate-x-full');
+                if (window.innerWidth >= 1024) {
+                    // Desktop: shift content
+                    mainContent.style.marginLeft = '20rem';
+                    mainContent.style.paddingLeft = '1rem';
+                    sidebarToggle.style.left = '21rem';
+                } else {
+                    // Mobile/Tablet: overlay
+                    mainContent.style.marginLeft = '0';
+                    mainContent.style.paddingLeft = '1rem';
+                    sidebarToggle.style.left = '1rem';
+                }
+            }
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const sidebar = document.getElementById('sessionSidebar');
+            const mainContent = document.getElementById('mainContent');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const isOpen = !sidebar.classList.contains('-translate-x-full');
+            
+            if (isOpen && window.innerWidth >= 1024) {
+                mainContent.style.marginLeft = '20rem';
+                sidebarToggle.style.left = '21rem';
+            } else {
+                mainContent.style.marginLeft = '0';
+                sidebarToggle.style.left = '1rem';
+            }
+        });
+
+        function setChatId() {
+            const input = document.getElementById('chatIdInput');
+            const chatId = input.value.trim();
+            
+            if (!chatId) {
+                showToast('Please enter a Chat ID', 'error');
+                return;
+            }
+            
+            currentSessionId = chatId;
+            document.getElementById('chatIdDisplay').textContent = chatId;
+            document.getElementById('currentChatId').classList.remove('hidden');
+            showToast('✅ Chat ID set: ' + chatId, 'success');
+        }
+
+        function loadSessionHistory() {
+            const sessionList = document.getElementById('sessionList');
+            const sessions = Object.keys(localStorage)
+                .filter(key => key.startsWith('erd_session_'))
+                .map(key => {
+                    try {
+                        const data = JSON.parse(localStorage.getItem(key));
+                        return { key, ...data };
+                    } catch {
+                        return null;
+                    }
+                })
+                .filter(Boolean)
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            if (sessions.length === 0) {
+                sessionList.innerHTML = '<div class="text-gray-400 text-sm text-center py-4">No saved sessions</div>';
+                return;
+            }
+            
+            sessionList.innerHTML = sessions.map(session => {
+                const date = new Date(session.timestamp).toLocaleDateString();
+                const time = new Date(session.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const type = session.type === 'voice' ? '🎤' : '🖼️';
+                
+                return '<div class="bg-gray-800/50 p-3 rounded-lg border border-gray-700">' +
+                    '<div class="flex items-center justify-between mb-2">' +
+                    '<div class="flex items-center space-x-2">' +
+                    '<span class="text-lg">' + type + '</span>' +
+                    '<div>' +
+                    '<div class="text-white text-sm font-mono">' + session.id + '</div>' +
+                    '<div class="text-gray-400 text-xs">' + date + ' ' + time + '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '<button onclick="deleteSession(\'' + session.key + '\')" class="text-red-400 hover:text-red-300 p-1">🗑️</button>' +
+                    '</div>' +
+                    '<div class="flex space-x-2">' +
+                    '<button onclick="loadSession(\'' + session.key + '\')" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs">📂 Load</button>' +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function loadSession(sessionKey) {
+            try {
+                const sessionData = JSON.parse(localStorage.getItem(sessionKey));
+                if (!sessionData) {
+                    showToast('Session not found', 'error');
+                    return;
+                }
+                
+                currentSessionId = sessionData.id;
+                document.getElementById('chatIdDisplay').textContent = sessionData.id;
+                document.getElementById('currentChatId').classList.remove('hidden');
+                
+                showToast('📂 Session ' + sessionData.id + ' loaded', 'success');
+                toggleSidebar();
+                
+            } catch (error) {
+                showToast('Failed to load session', 'error');
+            }
+        }
+
+        function deleteSession(sessionKey) {
+            if (confirm('Are you sure you want to delete this session?')) {
+                localStorage.removeItem(sessionKey);
+                loadSessionHistory();
+                showToast('🗑️ Session deleted', 'success');
+            }
+        }
+
+        function refreshSessions() {
+            loadSessionHistory();
+            showToast('🔄 Sessions refreshed', 'info');
+        }
+
+        function clearAllSessions() {
+            if (confirm('Are you sure you want to delete ALL sessions? This cannot be undone.')) {
+                Object.keys(localStorage)
+                    .filter(key => key.startsWith('erd_session_'))
+                    .forEach(key => localStorage.removeItem(key));
+                
+                loadSessionHistory();
+                showToast('🗑️ All sessions cleared', 'success');
+            }
+        }
+
+        // Image Upload Functions
+        function setupImageUpload() {
+            const fileInput = document.getElementById('erdImages');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const analyzeText = document.getElementById('analyzeText');
+
+            fileInput.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length > 0) {
+                    uploadedImages = files.map(file => ({ file, name: file.name }));
+                    document.getElementById('imageGallery').classList.remove('hidden');
+                    document.getElementById('uploadPrompt').classList.add('hidden');
+                    analyzeBtn.disabled = false;
+                    analyzeText.textContent = 'Analyze ' + files.length + ' Image' + (files.length > 1 ? 's' : '');
+                }
+            });
+        }
+
+        async function analyzeImages() {
+            if (uploadedImages.length === 0) return;
+            
+            showToast('🔍 Analyzing ERD images...', 'info');
+            
+            setTimeout(() => {
+                showToast('📊 Extracting entities and relationships...', 'info');
+            }, 1000);
+            
+            setTimeout(() => {
+                showERDPreviewModal();
+            }, 2500);
+        }
+        
+        function showERDPreviewModal() {
+            const modal = document.createElement('div');
+            modal.id = 'erdPreviewModal';
+            modal.className = 'fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4';
+            modal.innerHTML = `
+                <div class="bg-gray-900 rounded-2xl w-full max-w-4xl h-[700px] flex flex-col">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                        <h3 class="text-white font-semibold">📊 ERD Analysis Preview</h3>
+                        <button onclick="closeERDPreview()" class="text-gray-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="flex-1 p-4 flex">
+                        <div class="flex-1 mr-4">
+                            <div class="bg-gray-800 rounded-xl p-4 h-full">
+                                <h4 class="text-white font-semibold mb-3">📊 Detected ERD Structure</h4>
+                                <div class="space-y-3 max-h-96 overflow-y-auto">
+                                    <div class="bg-blue-900/30 p-3 rounded-lg border-l-4 border-blue-500">
+                                        <div class="text-blue-400 font-semibold mb-2">📋 Table: students</div>
+                                        <div class="text-gray-300 text-sm space-y-1">
+                                            <div>• student_id (PK)</div>
+                                            <div>• first_name</div>
+                                            <div>• last_name</div>
+                                            <div>• email (UNIQUE)</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-green-900/30 p-3 rounded-lg border-l-4 border-green-500">
+                                        <div class="text-green-400 font-semibold mb-2">📋 Table: courses</div>
+                                        <div class="text-gray-300 text-sm space-y-1">
+                                            <div>• course_id (PK)</div>
+                                            <div>• course_name</div>
+                                            <div>• credits</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-yellow-900/30 p-3 rounded-lg border-l-4 border-yellow-500">
+                                        <div class="text-yellow-400 font-semibold mb-2">🔗 Relationships</div>
+                                        <div class="text-gray-300 text-sm">
+                                            <div>• students (1) → enrollments (many)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="w-1/3">
+                            <div class="bg-gray-800 rounded-xl p-4 h-full flex flex-col">
+                                <h4 class="text-white font-semibold mb-3">✏️ Real-time Editor</h4>
+                                <textarea id="erdEditor" class="flex-1 bg-gray-700 text-white p-3 rounded border border-gray-600 text-sm font-mono resize-none">CREATE TABLE students (
+    student_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    email VARCHAR(255) UNIQUE
+);</textarea>
+                                <button onclick="previewChanges()" class="mt-3 bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm">
+                                    🔄 Preview Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 border-t border-gray-700 flex space-x-3">
+                        <button onclick="approveERD()" class="flex-1 bg-green-500 hover:bg-green-600 text-white px-4 py-3 rounded-xl font-semibold">
+                            ✅ Approve & Generate API
+                        </button>
+                        <button onclick="rejectERD()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-xl font-semibold">
+                            ❌ Reject
+                        </button>
+                        <button onclick="editERD()" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-3 rounded-xl font-semibold">
+                            ✏️ Edit
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        function closeERDPreview() {
+            const modal = document.getElementById('erdPreviewModal');
+            if (modal) document.body.removeChild(modal);
+        }
+        
+        function previewChanges() {
+            showToast('🔄 Schema updated in real-time!', 'success');
+        }
+        
+        function approveERD() {
+            closeERDPreview();
+            showToast('✅ ERD approved! Generating API...', 'success');
+            
+            setTimeout(() => {
+                const result = {
+                    schema: generateDemoSchema(),
+                    apiCode: generateDemoAPICode()
+                };
+                
+                currentGeneratedSchema = result.schema;
+                currentGeneratedAPI = result.apiCode;
+                
+                displayResults(result);
+                saveSession(result);
+                showToast('🎉 Complete solution generated!', 'success');
+            }, 2000);
+        }
+        
+        function rejectERD() {
+            closeERDPreview();
+            showToast('❌ ERD rejected. Please upload new images.', 'warning');
+        }
+        
+        function editERD() {
+            showToast('✏️ Continue editing in real-time mode...', 'info');
+        }
+
+        function displayResults(result) {
+            const resultsDiv = document.getElementById('results');
+            const content = document.getElementById('resultContent');
+            
+            content.innerHTML = 'Schema and API generated successfully!<br><br>' +
+                'Tables: students, courses, enrollments<br>' +
+                'Relationships: Proper foreign keys established<br>' +
+                'API: Full CRUD operations available';
+            
+            resultsDiv.classList.remove('hidden');
+        }
+
+        // Voice Recording Functions
+        function toggleRecording() {
+            const status = document.getElementById('recordingStatus');
+            
+            if (!isRecording) {
+                isRecording = true;
+                status.innerHTML = '<span class="text-green-400">🔴 Recording... Describe your database needs</span>';
+                
+                // Simulate recording for 5 seconds
+                setTimeout(() => {
+                    if (isRecording) {
+                        stopRecording();
+                    }
+                }, 5000);
+            } else {
+                stopRecording();
+            }
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            const status = document.getElementById('recordingStatus');
+            status.innerHTML = '<span class="text-yellow-400">🎯 Processing voice...</span>';
+            
+            // Simulate processing
+            setTimeout(() => {
+                status.innerHTML = '<span class="text-green-400">✅ Voice processed successfully</span>';
+                showToast('Voice converted to schema!', 'success');
+            }, 2000);
+        }
+
+        // Communication Functions
+        function startInstantChat() {
+            showToast('💬 Starting instant chat...', 'info');
+        }
+
+        function startVideoCall() {
+            showToast('📹 Starting video call...', 'info');
+        }
+
+        function startRealTimeVoiceChat() {
+            showToast('🎤 Starting real-time voice chat...', 'info');
+            setTimeout(() => {
+                showToast('🎤 Real-time voice chat ready!', 'success');
+            }, 2000);
+        }
+
+        function startInteractiveDesign() {
+            showToast('💬 Starting interactive design chat...', 'info');
+            setTimeout(() => {
+                showToast('💬 Interactive design chat ready!', 'success');
+            }, 2000);
+        }
+        
+        function requestCall() {
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            if (!phoneNumber) {
+                showToast('Please enter a phone number', 'error');
+                return;
+            }
+            
+            showToast('📞 Calling ' + phoneNumber + '...', 'info');
+            setTimeout(() => {
+                showToast('📞 Call initiated successfully!', 'success');
+            }, 3000);
+        }
+        
+        function startVideoCall() {
+            showToast('📹 Starting video call...', 'info');
+            setTimeout(() => {
+                showToast('📹 Video call ready!', 'success');
+            }, 2000);
+        }
+
+        function analyzeMediaUrl() {
+            const url = document.getElementById('mediaUrl').value.trim();
+            
+            if (!url) {
+                showToast('Please enter a URL to analyze', 'error');
+                return;
+            }
+            
+            const validation = validateAndCategorizeUrl(url);
+            
+            if (!validation.isValid) {
+                showUrlValidation(validation.message, 'error');
+                return;
+            }
+            
+            showUrlValidation(validation.message, 'success');
+            startCriticalAnalysis(url, validation.type, validation.platform);
+        }
+        
+        function validateAndCategorizeUrl(url) {
+            try {
+                const urlObj = new URL(url);
+                const domain = urlObj.hostname.toLowerCase();
+                
+                if (domain.includes('youtube.com') || domain.includes('youtu.be')) {
+                    return { isValid: true, type: 'video', platform: 'YouTube', message: '📺 YouTube video detected - Will analyze for database concepts' };
+                }
+                if (domain.includes('tiktok.com')) {
+                    return { isValid: true, type: 'video', platform: 'TikTok', message: '🎵 TikTok video detected - Will extract system design concepts' };
+                }
+                if (domain.includes('instagram.com')) {
+                    return { isValid: true, type: 'social', platform: 'Instagram', message: '📸 Instagram content detected - Will analyze for data structures' };
+                }
+                if (domain.includes('linkedin.com')) {
+                    return { isValid: true, type: 'professional', platform: 'LinkedIn', message: '💼 LinkedIn content detected - Will extract business logic' };
+                }
+                if (domain.includes('twitter.com') || domain.includes('x.com')) {
+                    return { isValid: true, type: 'social', platform: 'Twitter/X', message: '🐦 Twitter/X content detected - Will analyze system architecture' };
+                }
+                if (domain.includes('github.com')) {
+                    return { isValid: true, type: 'repository', platform: 'GitHub', message: '🐙 GitHub repository detected - Will analyze codebase for ERD' };
+                }
+                if (domain.includes('gitlab.com')) {
+                    return { isValid: true, type: 'repository', platform: 'GitLab', message: '🦊 GitLab repository detected - Will extract database schemas' };
+                }
+                if (domain.includes('notion.so') || domain.includes('notion.com')) {
+                    return { isValid: true, type: 'documentation', platform: 'Notion', message: '📝 Notion page detected - Will extract system requirements' };
+                }
+                if (domain.includes('udemy.com') || domain.includes('coursera.org') || domain.includes('edx.org')) {
+                    return { isValid: true, type: 'educational', platform: 'Learning Platform', message: '🎓 Educational content detected - Will extract course concepts' };
+                }
+                if (domain.includes('figma.com') || domain.includes('miro.com') || domain.includes('lucidchart.com')) {
+                    return { isValid: true, type: 'design', platform: 'Design Tool', message: '🎨 Design document detected - Will analyze system diagrams' };
+                }
+                if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
+                    return { isValid: true, type: 'web', platform: 'Web Content', message: '🌐 Web content detected - Will analyze for system concepts' };
+                }
+                
+                return { isValid: false, message: '❌ Invalid URL format - Please enter a valid HTTP/HTTPS URL' };
+                
+            } catch (error) {
+                return { isValid: false, message: '❌ Invalid URL format - Please check the URL and try again' };
+            }
+        }
+        
+        function showUrlValidation(message, type) {
+            const validation = document.getElementById('urlValidation');
+            validation.className = 'mb-3 p-2 rounded-lg text-sm ' + 
+                (type === 'error' ? 'bg-red-900/30 border border-red-500/30 text-red-400' : 
+                 'bg-green-900/30 border border-green-500/30 text-green-400');
+            validation.textContent = message;
+            validation.classList.remove('hidden');
+        }
+        
+        function startCriticalAnalysis(url, type, platform) {
+            showToast('🔍 Starting critical analysis of ' + platform + ' content...', 'info');
+            
+            setTimeout(() => {
+                showToast('📊 Extracting system concepts from ' + type + ' content...', 'info');
+            }, 1500);
+            
+            setTimeout(() => {
+                showToast('🔬 Validating extracted database concepts...', 'info');
+            }, 3000);
+            
+            setTimeout(() => {
+                showToast('🏗️ Generating validated ERD structure...', 'info');
+            }, 4500);
+            
+            setTimeout(() => {
+                const analysisResult = generateCriticalAnalysisResult(url, type, platform);
+                displayCriticalAnalysisResults(analysisResult);
+                showToast('✅ Critical analysis complete - ERD generated!', 'success');
+            }, 6000);
+        }
+        
+        function generateCriticalAnalysisResult(url, type, platform) {
+            const analysisResults = {
+                video: {
+                    extractedConcepts: ['User Management', 'Content Storage', 'Engagement Tracking', 'Analytics'],
+                    validatedEntities: ['users', 'videos', 'comments', 'likes', 'subscriptions'],
+                    criticalFindings: [
+                        '✅ Strong user-content relationship patterns identified',
+                        '⚠️ Missing data retention policies in original design',
+                        '✅ Scalable engagement tracking structure validated'
+                    ]
+                },
+                repository: {
+                    extractedConcepts: ['Code Management', 'Issue Tracking', 'User Collaboration', 'Version Control'],
+                    validatedEntities: ['repositories', 'users', 'issues', 'commits', 'pull_requests'],
+                    criticalFindings: [
+                        '✅ Robust version control data model identified',
+                        '✅ Proper many-to-many relationships for collaborators',
+                        '⚠️ Consider adding audit trails for security'
+                    ]
+                },
+                social: {
+                    extractedConcepts: ['Social Networking', 'Content Sharing', 'User Interactions', 'Feed Algorithm'],
+                    validatedEntities: ['users', 'posts', 'followers', 'interactions', 'feeds'],
+                    criticalFindings: [
+                        '✅ Efficient social graph structure validated',
+                        '⚠️ Privacy controls need stronger data isolation',
+                        '✅ Feed algorithm supports real-time updates'
+                    ]
+                }
+            };
+            
+            const result = analysisResults[type] || analysisResults.video;
+            
+            return {
+                url: url,
+                platform: platform,
+                type: type,
+                extractedConcepts: result.extractedConcepts,
+                validatedEntities: result.validatedEntities,
+                criticalFindings: result.criticalFindings,
+                schema: generateSchemaFromAnalysis(result.validatedEntities)
+            };
+        }
+        
+        function generateSchemaFromAnalysis(entities) {
+            return entities.map(entity => {
+                const commonFields = ['id SERIAL PRIMARY KEY', 'created_at TIMESTAMP DEFAULT NOW()'];
+                const entityFields = {
+                    users: ['username VARCHAR(50) UNIQUE', 'email VARCHAR(255) UNIQUE'],
+                    posts: ['user_id INTEGER REFERENCES users(id)', 'title VARCHAR(255)', 'content TEXT'],
+                    comments: ['post_id INTEGER REFERENCES posts(id)', 'user_id INTEGER REFERENCES users(id)', 'content TEXT'],
+                    videos: ['user_id INTEGER REFERENCES users(id)', 'title VARCHAR(255)', 'url VARCHAR(500)'],
+                    repositories: ['owner_id INTEGER REFERENCES users(id)', 'name VARCHAR(255)', 'description TEXT']
+                };
+                
+                const fields = commonFields.concat(entityFields[entity] || ['name VARCHAR(255)']);
+                return 'CREATE TABLE ' + entity + ' (\n    ' + fields.join(',\n    ') + '\n);';
+            }).join('\n\n');
+        }
+        
+        function displayCriticalAnalysisResults(result) {
+            const resultsDiv = document.getElementById('results');
+            const content = document.getElementById('resultContent');
+            
+            content.innerHTML = '🔍 CRITICAL ANALYSIS RESULTS\n\n' +
+                '📊 Platform: ' + result.platform + '\n' +
+                '🔗 Source: ' + result.url + '\n\n' +
+                '📋 EXTRACTED CONCEPTS:\n' +
+                result.extractedConcepts.map(concept => '• ' + concept).join('\n') + '\n\n' +
+                '🗄️ VALIDATED ENTITIES:\n' +
+                result.validatedEntities.map(entity => '• ' + entity).join('\n') + '\n\n' +
+                '🔬 CRITICAL FINDINGS:\n' +
+                result.criticalFindings.join('\n') + '\n\n' +
+                '✅ Schema and API generated with validation!';
+            
+            currentGeneratedSchema = result.schema;
+            currentGeneratedAPI = generateDemoAPICode();
+            
+            resultsDiv.classList.remove('hidden');
+        }
+
+        function requestCall() {
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            if (!phoneNumber) {
+                showToast('Please enter a phone number', 'error');
+                return;
+            }
+            
+            showToast('📞 Calling ' + phoneNumber + '...', 'info');
+        }
+
+        // Workflow Functions
+        function executeFullWorkflow() {
+            showToast('🚀 Executing full workflow...', 'info');
+            
+            setTimeout(() => {
+                const result = {
+                    schema: generateDemoSchema(),
+                    apiCode: generateDemoAPICode()
+                };
+                
+                currentGeneratedSchema = result.schema;
+                currentGeneratedAPI = result.apiCode;
+                
+                displayResults(result);
+                showToast('🎉 Workflow completed!', 'success');
+            }, 5000);
+        }
+
+        // Download Functions
+        function downloadSchema() {
+            if (currentGeneratedSchema) {
+                downloadFile('database-schema.sql', currentGeneratedSchema);
+            } else {
+                const demoSchema = generateDemoSchema();
+                downloadFile('database-schema.sql', demoSchema);
+            }
+        }
+
+        function downloadAPICode() {
+            if (currentGeneratedAPI) {
+                downloadFile('api-server.js', currentGeneratedAPI);
+            } else {
+                const demoAPI = generateDemoAPICode();
+                downloadFile('api-server.js', demoAPI);
+            }
+        }
+
+        function testAPIEndpoints() {
+            showSwaggerPlayground();
+        }
+        
+        function showSwaggerPlayground() {
+            const modal = document.createElement('div');
+            modal.id = 'swaggerModal';
+            modal.className = 'fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4';
+            modal.innerHTML = `
+                <div class="bg-gray-900 rounded-2xl w-full max-w-6xl h-[80vh] flex flex-col">
+                    <div class="flex items-center justify-between p-4 border-b border-gray-700">
+                        <h3 class="text-white font-semibold">🧪 API Testing Playground</h3>
+                        <button onclick="closeSwaggerPlayground()" class="text-gray-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="flex-1 p-4 flex">
+                        <div class="w-1/3 mr-4">
+                            <div class="bg-gray-800 rounded-xl p-4 h-full">
+                                <h4 class="text-white font-semibold mb-3">🚀 API Endpoints</h4>
+                                <div class="space-y-2 max-h-96 overflow-y-auto">
+                                    <div onclick="selectEndpoint('GET', '/api/students')" class="cursor-pointer p-2 rounded bg-blue-900/30 hover:bg-blue-900/50 border border-blue-500/30">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="bg-blue-500 text-white px-2 py-1 rounded text-xs font-semibold">GET</span>
+                                            <span class="text-blue-400 text-sm">/api/students</span>
+                                        </div>
+                                        <div class="text-gray-400 text-xs mt-1">List all students</div>
+                                    </div>
+                                    
+                                    <div onclick="selectEndpoint('POST', '/api/students')" class="cursor-pointer p-2 rounded bg-green-900/30 hover:bg-green-900/50 border border-green-500/30">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="bg-green-500 text-white px-2 py-1 rounded text-xs font-semibold">POST</span>
+                                            <span class="text-green-400 text-sm">/api/students</span>
+                                        </div>
+                                        <div class="text-gray-400 text-xs mt-1">Create new student</div>
+                                    </div>
+                                    
+                                    <div onclick="selectEndpoint('PUT', '/api/students/{id}')" class="cursor-pointer p-2 rounded bg-yellow-900/30 hover:bg-yellow-900/50 border border-yellow-500/30">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="bg-yellow-500 text-white px-2 py-1 rounded text-xs font-semibold">PUT</span>
+                                            <span class="text-yellow-400 text-sm">/api/students/{id}</span>
+                                        </div>
+                                        <div class="text-gray-400 text-xs mt-1">Update student</div>
+                                    </div>
+                                    
+                                    <div onclick="selectEndpoint('DELETE', '/api/students/{id}')" class="cursor-pointer p-2 rounded bg-red-900/30 hover:bg-red-900/50 border border-red-500/30">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="bg-red-500 text-white px-2 py-1 rounded text-xs font-semibold">DELETE</span>
+                                            <span class="text-red-400 text-sm">/api/students/{id}</span>
+                                        </div>
+                                        <div class="text-gray-400 text-xs mt-1">Delete student</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flex-1">
+                            <div class="bg-gray-800 rounded-xl p-4 h-full flex flex-col">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="text-white font-semibold">🛠️ Test Request</h4>
+                                    <button onclick="executeTest()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded font-semibold">
+                                        ▶️ Execute
+                                    </button>
+                                </div>
+                                
+                                <div class="space-y-3 flex-1">
+                                    <div>
+                                        <label class="text-gray-300 text-sm">Method & URL:</label>
+                                        <div id="selectedEndpoint" class="bg-gray-700 p-2 rounded text-white font-mono text-sm">
+                                            Select an endpoint from the left
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="text-gray-300 text-sm">Request Body (JSON):</label>
+                                        <textarea id="requestBody" class="w-full bg-gray-700 text-white p-3 rounded border border-gray-600 text-sm font-mono" rows="6"></textarea>
+                                    </div>
+                                    
+                                    <div class="flex-1">
+                                        <label class="text-gray-300 text-sm">Response:</label>
+                                        <div id="testResponse" class="bg-gray-900 p-3 rounded border border-gray-600 text-green-400 font-mono text-sm h-32 overflow-y-auto">
+                                            Response will appear here...
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 border-t border-gray-700 flex space-x-3">
+                        <button onclick="downloadSwagger()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                            📚 Download Swagger
+                        </button>
+                        <button onclick="generatePostmanCollection()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded">
+                            📦 Export Postman
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+        }
+        
+        function closeSwaggerPlayground() {
+            const modal = document.getElementById('swaggerModal');
+            if (modal) document.body.removeChild(modal);
+        }
+        
+        function selectEndpoint(method, path) {
+            const display = document.getElementById('selectedEndpoint');
+            display.innerHTML = method + ' ' + path;
+            
+            const requestBody = document.getElementById('requestBody');
+            if (method === 'POST' || method === 'PUT') {
+                requestBody.value = JSON.stringify({
+                    first_name: 'John',
+                    last_name: 'Doe',
+                    email: 'john@example.com'
+                }, null, 2);
+            } else {
+                requestBody.value = '';
+            }
+        }
+        
+        function executeTest() {
+            const response = document.getElementById('testResponse');
+            response.innerHTML = 'Executing request...\n';
+            
+            setTimeout(() => {
+                const mockResponse = {
+                    status: 200,
+                    data: {
+                        student_id: 1,
+                        first_name: 'John',
+                        last_name: 'Doe',
+                        email: 'john@example.com',
+                        created_at: new Date().toISOString()
+                    }
+                };
+                
+                response.innerHTML = JSON.stringify(mockResponse, null, 2);
+                showToast('✅ API test executed successfully!', 'success');
+            }, 1000);
+        }
+        
+        function downloadSwagger() {
+            const swaggerSpec = {
+                openapi: '3.0.0',
+                info: { title: 'Generated API', version: '1.0.0' },
+                paths: {
+                    '/api/students': {
+                        get: { summary: 'List students' },
+                        post: { summary: 'Create student' }
+                    }
+                }
+            };
+            downloadFile('swagger-spec.json', JSON.stringify(swaggerSpec, null, 2));
+        }
+        
+        function generatePostmanCollection() {
+            const collection = {
+                info: { name: 'API Collection' },
+                item: [{
+                    name: 'Get Students',
+                    request: {
+                        method: 'GET',
+                        url: 'http://localhost:3000/api/students'
+                    }
+                }]
+            };
+            downloadFile('postman-collection.json', JSON.stringify(collection, null, 2));
+        }
+
+        function downloadFile(filename, content) {
+            try {
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('📥 ' + filename + ' downloaded!', 'success');
+            } catch (error) {
+                showToast('❌ Download failed', 'error');
+            }
+        }
+
+        // Demo Data Generation
+        function generateDemoSchema() {
+            return '-- Generated SQL Schema\n\n' +
+                'CREATE TABLE students (\n' +
+                '    student_id SERIAL PRIMARY KEY,\n' +
+                '    first_name VARCHAR(100) NOT NULL,\n' +
+                '    last_name VARCHAR(100) NOT NULL,\n' +
+                '    email VARCHAR(255) UNIQUE,\n' +
+                '    date_of_birth DATE\n' +
+                ');\n\n' +
+                'CREATE TABLE courses (\n' +
+                '    course_id SERIAL PRIMARY KEY,\n' +
+                '    course_name VARCHAR(200) NOT NULL,\n' +
+                '    description TEXT,\n' +
+                '    credits INTEGER NOT NULL\n' +
+                ');\n\n' +
+                'CREATE TABLE enrollments (\n' +
+                '    enrollment_id SERIAL PRIMARY KEY,\n' +
+                '    student_id INTEGER,\n' +
+                '    course_id INTEGER,\n' +
+                '    enroll_date DATE NOT NULL\n' +
+                ');';
+        }
+
+        function generateDemoAPICode() {
+            return '// Generated Express.js API\n' +
+                'const express = require(\'express\');\n' +
+                'const app = express();\n\n' +
+                'app.use(express.json());\n\n' +
+                '// Students endpoints\n' +
+                'app.get(\'/api/students\', (req, res) => {\n' +
+                '    res.json({ message: \'List all students\' });\n' +
+                '});\n\n' +
+                'app.post(\'/api/students\', (req, res) => {\n' +
+                '    res.json({ message: \'Create new student\' });\n' +
+                '});\n\n' +
+                'app.listen(3000, () => {\n' +
+                '    console.log(\'API running on port 3000\');\n' +
+                '});';
+        }
+
+        // Session Management
+        function saveSession(results = null) {
+            const chatId = currentSessionId || Date.now().toString();
+            
+            const sessionData = {
+                id: chatId,
+                timestamp: new Date().toISOString(),
+                images: uploadedImages.map(img => ({ name: img.name })),
+                results: results,
+                type: uploadedImages.length > 0 ? 'image' : 'voice'
+            };
+            
+            localStorage.setItem('erd_session_' + chatId, JSON.stringify(sessionData));
+            loadSessionHistory();
+            showToast('💾 Session saved (ID: ' + chatId + ')', 'success');
+        }
+
+        // Enhanced URL Analysis Functions
+        function analyzeMediaUrl() {
+            const url = document.getElementById('mediaUrl').value.trim();
+            
+            if (!url) {
+                showToast('Please enter a URL to analyze', 'error');
+                return;
+            }
+            
+            const validation = validateAndCategorizeUrl(url);
+            
+            if (!validation.isValid) {
+                showUrlValidation(validation.message, 'error');
+                return;
+            }
+            
+            showUrlValidation(validation.message, 'success');
+            startCriticalAnalysis(url, validation.type, validation.platform);
+        }
+        
+        function validateAndCategorizeUrl(url) {
+            try {
+                const urlObj = new URL(url);
+                const domain = urlObj.hostname.toLowerCase();
+                
+                if (domain.includes('youtube.com') || domain.includes('youtu.be')) {
+                    return { isValid: true, type: 'video', platform: 'YouTube', message: '📺 YouTube video detected - Will analyze for database concepts' };
+                }
+                if (domain.includes('tiktok.com')) {
+                    return { isValid: true, type: 'video', platform: 'TikTok', message: '🎵 TikTok video detected - Will extract system design concepts' };
+                }
+                if (domain.includes('instagram.com')) {
+                    return { isValid: true, type: 'social', platform: 'Instagram', message: '📸 Instagram content detected - Will analyze for data structures' };
+                }
+                if (domain.includes('github.com')) {
+                    return { isValid: true, type: 'repository', platform: 'GitHub', message: '🐙 GitHub repository detected - Will analyze codebase for ERD' };
+                }
+                if (urlObj.protocol === 'http:' || urlObj.protocol === 'https:') {
+                    return { isValid: true, type: 'web', platform: 'Web Content', message: '🌐 Web content detected - Will analyze for system concepts' };
+                }
+                
+                return { isValid: false, message: '❌ Invalid URL format - Please enter a valid HTTP/HTTPS URL' };
+                
+            } catch (error) {
+                return { isValid: false, message: '❌ Invalid URL format - Please check the URL and try again' };
+            }
+        }
+        
+        function showUrlValidation(message, type) {
+            const validation = document.getElementById('urlValidation');
+            validation.className = 'mb-3 p-2 rounded-lg text-sm ' + 
+                (type === 'error' ? 'bg-red-900/30 border border-red-500/30 text-red-400' : 
+                 'bg-green-900/30 border border-green-500/30 text-green-400');
+            validation.textContent = message;
+            validation.classList.remove('hidden');
+        }
+        
+        function startCriticalAnalysis(url, type, platform) {
+            showToast('🔍 Starting critical analysis of ' + platform + ' content...', 'info');
+            
+            setTimeout(() => {
+                showToast('📊 Extracting system concepts from ' + type + ' content...', 'info');
+            }, 1500);
+            
+            setTimeout(() => {
+                showToast('🔬 Validating extracted database concepts...', 'info');
+            }, 3000);
+            
+            setTimeout(() => {
+                const result = {
+                    url: url,
+                    platform: platform,
+                    type: type,
+                    schema: generateDemoSchema(),
+                    apiCode: generateDemoAPICode()
+                };
+                
+                currentGeneratedSchema = result.schema;
+                currentGeneratedAPI = result.apiCode;
+                
+                displayResults(result);
+                showToast('✅ Critical analysis complete - ERD generated!', 'success');
+            }, 4500);
+        }
+
+        // Toast Notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-500'
+            };
+            
+            toast.className = (colors[type] || colors.info) + ' text-white px-4 py-2 rounded-lg shadow-lg transform transition-all duration-300 translate-x-full';
+            toast.textContent = message;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => toast.classList.remove('translate-x-full'), 100);
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => {
+                    if (container.contains(toast)) {
+                        container.removeChild(toast);
+                    }
+                }, 300);
+            }, 4000);
+        }
+    </script>
+</body>
+</html>

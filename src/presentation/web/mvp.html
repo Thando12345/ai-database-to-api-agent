@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database-to-API Agent MVP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .step-active { @apply bg-blue-500 text-white; }
+        .step-complete { @apply bg-green-500 text-white; }
+        .step-pending { @apply bg-gray-300 text-gray-600; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Database-to-API Agent</h1>
+            <p class="text-gray-600">Upload ERD → Generate Schema → Deploy API in under 5 minutes</p>
+        </div>
+
+        <!-- Progress Steps -->
+        <div class="flex justify-center mb-8">
+            <div class="flex items-center space-x-4">
+                <div id="step1" class="step-active w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">1</div>
+                <div class="w-16 h-1 bg-gray-300"></div>
+                <div id="step2" class="step-pending w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">2</div>
+                <div class="w-16 h-1 bg-gray-300"></div>
+                <div id="step3" class="step-pending w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">3</div>
+            </div>
+        </div>
+
+        <!-- Step 1: Upload ERD -->
+        <div id="uploadSection" class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Step 1: Upload ERD Image</h2>
+            
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer" onclick="document.getElementById('erdFile').click()">
+                <input type="file" id="erdFile" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+                <div id="uploadPrompt">
+                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p class="text-gray-600 mb-2">Click to upload your ERD image</p>
+                    <p class="text-sm text-gray-400">PNG, JPG up to 10MB</p>
+                </div>
+                <div id="imagePreview" class="hidden">
+                    <img id="previewImg" class="max-w-full max-h-64 mx-auto rounded" alt="ERD Preview">
+                    <p class="text-green-600 mt-2">✓ Image uploaded successfully</p>
+                </div>
+            </div>
+
+            <div class="mt-4 flex justify-end">
+                <button id="analyzeBtn" onclick="analyzeERD()" disabled class="bg-blue-500 text-white px-6 py-2 rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-blue-600 transition-colors">
+                    Analyze ERD
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Schema Generation -->
+        <div id="schemaSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">Step 2: Generated Schema</h2>
+            
+            <div id="analysisProgress" class="mb-4">
+                <div class="flex items-center space-x-2 mb-2">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                    <span class="text-gray-600">Analyzing ERD with AI...</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="progressBar" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="schemaResults" class="hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="font-semibold mb-2">Detected Tables</h3>
+                        <div id="tablesList" class="space-y-2"></div>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold mb-2">SQL Schema</h3>
+                        <pre id="sqlSchema" class="bg-gray-100 p-3 rounded text-sm overflow-x-auto"></pre>
+                    </div>
+                </div>
+                
+                <div class="mt-4 flex justify-between">
+                    <button onclick="editSchema()" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600">
+                        Edit Schema
+                    </button>
+                    <button onclick="generateAPI()" class="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">
+                        Generate API
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: API Generation -->
+        <div id="apiSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">Step 3: Generated API</h2>
+            
+            <div id="apiProgress" class="mb-4">
+                <div class="flex items-center space-x-2 mb-2">
+                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-green-500"></div>
+                    <span class="text-gray-600">Generating REST API endpoints...</span>
+                </div>
+            </div>
+
+            <div id="apiResults" class="hidden">
+                <div class="mb-4">
+                    <h3 class="font-semibold mb-2">API Endpoints</h3>
+                    <div id="endpointsList" class="space-y-2"></div>
+                </div>
+
+                <div class="mb-4">
+                    <h3 class="font-semibold mb-2">Generated Code</h3>
+                    <pre id="apiCode" class="bg-gray-100 p-3 rounded text-sm overflow-x-auto max-h-64"></pre>
+                </div>
+
+                <div class="flex space-x-4">
+                    <button onclick="downloadCode()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                        Download Code
+                    </button>
+                    <button onclick="testAPI()" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600">
+                        Test API
+                    </button>
+                    <button onclick="deployAPI()" class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600">
+                        Deploy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voice Alternative -->
+        <div class="bg-blue-50 rounded-lg p-6 mb-6">
+            <h3 class="font-semibold mb-2">Alternative: Voice Description</h3>
+            <p class="text-gray-600 mb-4">Describe your database requirements instead of uploading an image</p>
+            <div class="flex space-x-4">
+                <button id="voiceBtn" onclick="toggleVoiceRecording()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">
+                    🎤 Start Recording
+                </button>
+                <div id="voiceStatus" class="flex items-center text-gray-600"></div>
+            </div>
+        </div>
+
+        <!-- Success Metrics -->
+        <div id="successMetrics" class="bg-green-50 rounded-lg p-6 hidden">
+            <h3 class="font-semibold text-green-800 mb-2">✅ Success!</h3>
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <div class="text-2xl font-bold text-green-600" id="timeMetric">--</div>
+                    <div class="text-sm text-gray-600">Time to API</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-green-600" id="accuracyMetric">--</div>
+                    <div class="text-sm text-gray-600">Schema Accuracy</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-green-600" id="reductionMetric">--</div>
+                    <div class="text-sm text-gray-600">Time Saved</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let startTime = Date.now();
+        let currentSchema = '';
+        let currentAPI = '';
+        let isRecording = false;
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('uploadPrompt').classList.add('hidden');
+                document.getElementById('imagePreview').classList.remove('hidden');
+                document.getElementById('previewImg').src = e.target.result;
+                document.getElementById('analyzeBtn').disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function analyzeERD() {
+            // Update progress
+            updateStep(1, 'complete');
+            updateStep(2, 'active');
+            document.getElementById('schemaSection').classList.remove('hidden');
+            
+            // Simulate AI analysis
+            const progressBar = document.getElementById('progressBar');
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                progressBar.style.width = progress + '%';
+                if (progress >= 100) {
+                    clearInterval(interval);
+                    showSchemaResults();
+                }
+            }, 200);
+        }
+
+        function showSchemaResults() {
+            document.getElementById('analysisProgress').classList.add('hidden');
+            document.getElementById('schemaResults').classList.remove('hidden');
+
+            // Mock schema results
+            const tables = [
+                { name: 'users', columns: ['id', 'username', 'email', 'created_at'] },
+                { name: 'posts', columns: ['id', 'user_id', 'title', 'content', 'created_at'] },
+                { name: 'comments', columns: ['id', 'post_id', 'user_id', 'content', 'created_at'] }
+            ];
+
+            // Display tables
+            const tablesList = document.getElementById('tablesList');
+            tablesList.innerHTML = tables.map(table => 
+                `<div class="bg-gray-50 p-3 rounded">
+                    <div class="font-medium">${table.name}</div>
+                    <div class="text-sm text-gray-600">${table.columns.join(', ')}</div>
+                </div>`
+            ).join('');
+
+            // Display SQL
+            currentSchema = generateSQL(tables);
+            document.getElementById('sqlSchema').textContent = currentSchema;
+        }
+
+        function generateSQL(tables) {
+            return tables.map(table => {
+                const columns = table.columns.map(col => {
+                    if (col === 'id') return '  id SERIAL PRIMARY KEY';
+                    if (col.includes('_id')) return `  ${col} INTEGER REFERENCES ${col.replace('_id', '')}(id)`;
+                    if (col === 'created_at') return '  created_at TIMESTAMP DEFAULT NOW()';
+                    if (col === 'email') return '  email VARCHAR(255) UNIQUE';
+                    return `  ${col} VARCHAR(255)`;
+                }).join(',\n');
+                
+                return `CREATE TABLE ${table.name} (\n${columns}\n);`;
+            }).join('\n\n');
+        }
+
+        async function generateAPI() {
+            updateStep(2, 'complete');
+            updateStep(3, 'active');
+            document.getElementById('apiSection').classList.remove('hidden');
+
+            // Simulate API generation
+            setTimeout(() => {
+                showAPIResults();
+            }, 2000);
+        }
+
+        function showAPIResults() {
+            document.getElementById('apiProgress').classList.add('hidden');
+            document.getElementById('apiResults').classList.remove('hidden');
+
+            // Mock endpoints
+            const endpoints = [
+                'GET /api/users - Get all users',
+                'POST /api/users - Create user',
+                'GET /api/posts - Get all posts',
+                'POST /api/posts - Create post',
+                'GET /api/comments - Get all comments',
+                'POST /api/comments - Create comment'
+            ];
+
+            document.getElementById('endpointsList').innerHTML = endpoints.map(endpoint => 
+                `<div class="bg-gray-50 p-2 rounded text-sm font-mono">${endpoint}</div>`
+            ).join('');
+
+            // Mock API code
+            currentAPI = `const express = require('express');
+const app = express();
+app.use(express.json());
+
+// Users endpoints
+app.get('/api/users', (req, res) => {
+    res.json({ message: 'Get all users' });
+});
+
+app.post('/api/users', (req, res) => {
+    res.json({ message: 'User created', data: req.body });
+});
+
+// Posts endpoints
+app.get('/api/posts', (req, res) => {
+    res.json({ message: 'Get all posts' });
+});
+
+app.listen(3000, () => {
+    console.log('API running on port 3000');
+});`;
+
+            document.getElementById('apiCode').textContent = currentAPI;
+            
+            updateStep(3, 'complete');
+            showSuccessMetrics();
+        }
+
+        function showSuccessMetrics() {
+            const totalTime = Math.round((Date.now() - startTime) / 1000);
+            document.getElementById('timeMetric').textContent = totalTime + 's';
+            document.getElementById('accuracyMetric').textContent = '85%';
+            document.getElementById('reductionMetric').textContent = '75%';
+            document.getElementById('successMetrics').classList.remove('hidden');
+        }
+
+        function updateStep(stepNum, status) {
+            const step = document.getElementById(`step${stepNum}`);
+            step.className = `step-${status} w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold`;
+        }
+
+        function editSchema() {
+            const newSchema = prompt('Edit your schema:', currentSchema);
+            if (newSchema) {
+                currentSchema = newSchema;
+                document.getElementById('sqlSchema').textContent = currentSchema;
+            }
+        }
+
+        function downloadCode() {
+            const blob = new Blob([currentAPI], { type: 'text/javascript' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'generated-api.js';
+            a.click();
+        }
+
+        function testAPI() {
+            alert('API testing would open in a new window with Postman collection');
+        }
+
+        function deployAPI() {
+            alert('Deployment to cloud platform would start here');
+        }
+
+        // Voice functionality
+        function toggleVoiceRecording() {
+            const btn = document.getElementById('voiceBtn');
+            const status = document.getElementById('voiceStatus');
+            
+            if (!isRecording) {
+                isRecording = true;
+                btn.textContent = '⏹️ Stop Recording';
+                btn.className = 'bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600';
+                status.textContent = 'Recording... Describe your database needs';
+                
+                // Simulate voice recording
+                setTimeout(() => {
+                    if (isRecording) {
+                        stopVoiceRecording();
+                    }
+                }, 5000);
+            } else {
+                stopVoiceRecording();
+            }
+        }
+
+        function stopVoiceRecording() {
+            isRecording = false;
+            const btn = document.getElementById('voiceBtn');
+            const status = document.getElementById('voiceStatus');
+            
+            btn.textContent = '🎤 Start Recording';
+            btn.className = 'bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600';
+            status.textContent = 'Processing voice... Converting to ERD';
+            
+            // Simulate voice processing
+            setTimeout(() => {
+                status.textContent = '✅ Voice processed! Generated schema from description.';
+                // Auto-proceed to schema section
+                updateStep(1, 'complete');
+                updateStep(2, 'active');
+                document.getElementById('schemaSection').classList.remove('hidden');
+                setTimeout(showSchemaResults, 1000);
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

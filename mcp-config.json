@@ -1,0 +1,125 @@
+{
+  "mcpServers": {
+    "database-api-agent": {
+      "command": "node",
+      "args": ["src/infrastructure/mcp/server.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  },
+  "server": {
+    "name": "database-api-agent",
+    "version": "1.0.0",
+    "description": "AI-Powered Database-to-API Agent MCP Server",
+    "capabilities": {
+      "tools": {
+        "listChanged": true
+      },
+      "resources": {
+        "subscribe": true,
+        "listChanged": true
+      },
+      "prompts": {
+        "listChanged": true
+      },
+      "logging": {}
+    }
+  },
+  "transport": {
+    "websocket": {
+      "enabled": true,
+      "port": 8080
+    },
+    "http": {
+      "enabled": true,
+      "basePath": "/mcp"
+    }
+  },
+  "tools": [
+    {
+      "name": "analyze_erd_image",
+      "description": "Analyze ERD image and generate database schema"
+    },
+    {
+      "name": "process_voice_description",
+      "description": "Convert voice description to database schema"
+    },
+    {
+      "name": "generate_api",
+      "description": "Generate REST API from database schema"
+    },
+    {
+      "name": "deploy_database",
+      "description": "Deploy database schema to target environment"
+    },
+    {
+      "name": "validate_schema",
+      "description": "Validate database schema for best practices"
+    },
+    {
+      "name": "optimize_queries",
+      "description": "Analyze and optimize database queries"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "database://schemas/list",
+      "description": "List all database schemas"
+    },
+    {
+      "uri": "database://schemas/active",
+      "description": "Get currently active schema"
+    },
+    {
+      "uri": "api://specs/list",
+      "description": "List all API specifications"
+    },
+    {
+      "uri": "api://deployments/list",
+      "description": "List all API deployments"
+    },
+    {
+      "uri": "templates://sql/common",
+      "description": "Common SQL templates"
+    },
+    {
+      "uri": "templates://api/express",
+      "description": "Express.js API template"
+    },
+    {
+      "uri": "docs://best-practices",
+      "description": "Database and API best practices"
+    },
+    {
+      "uri": "logs://recent",
+      "description": "Recent system logs"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "analyze_erd",
+      "description": "Generate prompts for ERD analysis and schema generation"
+    },
+    {
+      "name": "optimize_schema",
+      "description": "Generate prompts for database schema optimization"
+    },
+    {
+      "name": "generate_api_docs",
+      "description": "Generate prompts for API documentation creation"
+    },
+    {
+      "name": "security_review",
+      "description": "Generate prompts for security analysis"
+    },
+    {
+      "name": "performance_analysis",
+      "description": "Generate prompts for performance optimization"
+    },
+    {
+      "name": "migration_strategy",
+      "description": "Generate prompts for database migration planning"
+    }
+  ]
+}

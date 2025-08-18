@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Server Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-8">MCP Server Test Interface</h1>
+        
+        <!-- Connection Status -->
+        <div class="bg-gray-800 p-6 rounded-lg mb-6">
+            <h2 class="text-xl font-semibold mb-4">Connection Status</h2>
+            <div id="status" class="text-red-400">Disconnected</div>
+            <button id="connectBtn" class="bg-blue-600 px-4 py-2 rounded mt-4">Connect WebSocket</button>
+        </div>
+
+        <!-- HTTP Tests -->
+        <div class="bg-gray-800 p-6 rounded-lg mb-6">
+            <h2 class="text-xl font-semibold mb-4">HTTP API Tests</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="testEndpoint('/mcp')" class="bg-green-600 px-4 py-2 rounded">Test /mcp</button>
+                <button onclick="testEndpoint('/mcp/health')" class="bg-green-600 px-4 py-2 rounded">Test Health</button>
+                <button onclick="testEndpoint('/mcp/tools/list')" class="bg-green-600 px-4 py-2 rounded">List Tools</button>
+                <button onclick="testEndpoint('/mcp/resources/list')" class="bg-green-600 px-4 py-2 rounded">List Resources</button>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="bg-gray-800 p-6 rounded-lg">
+            <h2 class="text-xl font-semibold mb-4">Results</h2>
+            <pre id="results" class="bg-gray-900 p-4 rounded text-sm overflow-auto max-h-96"></pre>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        const status = document.getElementById('status');
+        const results = document.getElementById('results');
+        const connectBtn = document.getElementById('connectBtn');
+
+        function log(message) {
+            results.textContent += new Date().toISOString() + ': ' + message + '\n';
+            results.scrollTop = results.scrollHeight;
+        }
+
+        async function testEndpoint(endpoint) {
+            try {
+                const response = await fetch(`http://localhost:3000${endpoint}`);
+                const data = await response.json();
+                log(`${endpoint}: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`${endpoint} ERROR: ${error.message}`);
+            }
+        }
+
+        connectBtn.addEventListener('click', () => {
+            if (ws) {
+                ws.close();
+                return;
+            }
+
+            ws = new WebSocket('ws://localhost:8080');
+            
+            ws.onopen = () => {
+                status.textContent = 'Connected to WebSocket';
+                status.className = 'text-green-400';
+                connectBtn.textContent = 'Disconnect';
+                log('WebSocket connected');
+                
+                // Send initialize message
+                ws.send(JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'initialize',
+                    params: {
+                        protocolVersion: '2024-11-05',
+                        capabilities: {},
+                        clientInfo: { name: 'test-client', version: '1.0.0' }
+                    }
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                log(`WebSocket message: ${event.data}`);
+            };
+
+            ws.onclose = () => {
+                status.textContent = 'Disconnected';
+                status.className = 'text-red-400';
+                connectBtn.textContent = 'Connect WebSocket';
+                ws = null;
+                log('WebSocket disconnected');
+            };
+
+            ws.onerror = (error) => {
+                log(`WebSocket error: ${error}`);
+            };
+        });
+
+        // Test HTTP endpoints on load
+        window.onload = () => {
+            testEndpoint('/mcp');
+        };
+    </script>
+</body>
+</html>

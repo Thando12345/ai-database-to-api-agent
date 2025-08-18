@@ -1,0 +1,115 @@
+/* Mobile-specific styles for better iOS/iPhone compatibility */
+
+/* Fix gradient text rendering on iOS */
+.gradient-text {
+    background: linear-gradient(135deg, #c084fc 0%, #f472b6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    color: transparent;
+    /* Fallback for older browsers */
+    background-color: #c084fc;
+}
+
+/* Ensure proper touch targets for mobile */
+@media (max-width: 768px) {
+    button, .clickable {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Better spacing for mobile */
+    .mobile-spacing {
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    
+    /* Responsive text sizes */
+    .mobile-text-sm {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+    }
+    
+    .mobile-text-base {
+        font-size: 1rem;
+        line-height: 1.5rem;
+    }
+    
+    /* Better modal sizing on mobile */
+    .mobile-modal {
+        margin: 1rem;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+    }
+}
+
+/* iPhone specific fixes */
+@supports (-webkit-touch-callout: none) {
+    /* iOS Safari specific styles */
+    .gradient-text {
+        background: linear-gradient(135deg, #c084fc 0%, #f472b6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        /* Force hardware acceleration */
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+    }
+    
+    /* Fix input styling on iOS */
+    input[type="file"] {
+        -webkit-appearance: none;
+        appearance: none;
+    }
+    
+    /* Better button styling on iOS */
+    button {
+        -webkit-appearance: none;
+        appearance: none;
+        border-radius: 0.5rem;
+    }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .gradient-text {
+        /* Enhanced gradient for retina displays */
+        background: linear-gradient(135deg, #c084fc 0%, #e879f9 25%, #f472b6 50%, #ec4899 75%, #f472b6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .gradient-text {
+        background: linear-gradient(135deg, #d8b4fe 0%, #f9a8d4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    .animate-bounce-slow,
+    .animate-pulse-slow,
+    .animate-pulse {
+        animation: none;
+    }
+}
+
+/* Better focus states for keyboard navigation */
+button:focus,
+input:focus,
+.clickable:focus {
+    outline: 2px solid #c084fc;
+    outline-offset: 2px;
+}
+
+/* Improve touch scrolling on iOS */
+.scroll-container {
+    -webkit-overflow-scrolling: touch;
+    overflow-scrolling: touch;
+}
