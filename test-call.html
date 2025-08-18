@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Call Request</title>
+</head>
+<body>
+    <h1>Test Call Request</h1>
+    <input type="tel" id="phoneNumber" placeholder="+27 61 948 0745" value="+27 61 948 0745">
+    <button onclick="testCall()">Test Call Request</button>
+    <div id="result"></div>
+
+    <script>
+        async function testCall() {
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                console.log('Making request to:', '/api/request-call');
+                console.log('Phone number:', phoneNumber);
+                
+                const response = await fetch('/api/request-call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        phoneNumber: phoneNumber,
+                        purpose: 'Test call',
+                        sessionId: 'test-session'
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                const result = await response.json();
+                console.log('Response data:', result);
+                
+                resultDiv.innerHTML = `
+                    <h3>Response:</h3>
+                    <p>Status: ${response.status}</p>
+                    <p>Success: ${result.success}</p>
+                    <p>Message: ${result.message}</p>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

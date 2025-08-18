@@ -293,6 +293,9 @@
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-bold text-white">🎉 Generated Solution</h3>
                 <div class="flex flex-wrap gap-2">
+                    <button onclick="downloadERDDiagram()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        📊 Download ERD
+                    </button>
                     <button onclick="downloadSchema()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
                         💾 Download Schema
                     </button>
@@ -324,6 +327,10 @@
     <script src="fix-buttons.js"></script>
     <script src="helper-functions.js"></script>
     <script src="real-time-client.js"></script>
+    <script src="../../../erd-generator.js"></script>
+    <script src="erd-functions.js"></script>
+    <script src="analyzeTextERD.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <script>
         // Application state
@@ -331,6 +338,14 @@
         let currentSessionId = null;
         let currentGeneratedSchema = '';
         let currentGeneratedAPI = '';
+        
+        // Fallback showToast function if not loaded
+        if (typeof showToast === 'undefined') {
+            window.showToast = function(message, type = 'info') {
+                console.log(`[${type.toUpperCase()}] ${message}`);
+                alert(`${type.toUpperCase()}: ${message}`);
+            };
+        }
         
         // Update currentGeneratedAPI when API is generated
         function updateGeneratedAPI(apiCode) {
@@ -2595,10 +2610,10 @@ const pool = new Pool({
                     optimizePerformance: document.getElementById('optimizePerformance')?.checked || false
                 };
                 
-                const response = await fetch('/api/schema/generate-api', {
+                const response = await fetch('/api/generate-api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ schema, options })
+                    body: JSON.stringify({ analysis: { tables: parseSchemaToTables(schema) } })
                 });
                 
                 if (!response.ok) throw new Error('API generation failed: ' + response.statusText);
@@ -3948,17 +3963,58 @@ app.listen(3000, () => {
 });`;
         }
         
-        function requestCall() {
-            const phoneNumber = document.getElementById('phoneNumber').value;
+        async function requestCall() {
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
             if (!phoneNumber) {
                 showToast('Please enter a phone number', 'error');
                 return;
             }
             
-            showToast('📞 Calling ' + phoneNumber + '...', 'info');
-            setTimeout(() => {
-                showToast('📞 Call initiated successfully!', 'success');
-            }, 3000);
+            showToast('📞 Requesting call to ' + phoneNumber + '...', 'info');
+            
+            try {
+                console.log('Making call request to:', '/api/request-call');
+                console.log('Phone number:', phoneNumber);
+                console.log('Session ID:', currentSessionId);
+                
+                const response = await fetch('/api/request-call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        phoneNumber: phoneNumber,
+                        purpose: 'Database consultation',
+                        sessionId: currentSessionId || 'default-session'
+                    })
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Response data:', result);
+                
+                if (result.success) {
+                    showToast(`📞 Call request successful! You'll receive a call in ${result.estimatedCallTime}`, 'success');
+                    
+                    // Show call status
+                    setTimeout(() => {
+                        showToast('📞 AI Agent is calling you now...', 'info');
+                    }, 2000);
+                    
+                } else {
+                    showToast('❌ Call request failed: ' + (result.error || result.message || 'Unknown error'), 'error');
+                }
+                
+            } catch (error) {
+                console.error('Call request error:', error);
+                showToast('❌ Failed to request call: ' + error.message, 'error');
+            }
         }
         
         function startVideoCall() {
