@@ -293,6 +293,9 @@
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-bold text-white">🎉 Generated Solution</h3>
                 <div class="flex flex-wrap gap-2">
+                    <button onclick="downloadERDDiagram()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        📊 Download ERD
+                    </button>
                     <button onclick="downloadSchema()" class="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors">
                         💾 Download Schema
                     </button>
@@ -324,6 +327,10 @@
     <script src="fix-buttons.js"></script>
     <script src="helper-functions.js"></script>
     <script src="real-time-client.js"></script>
+    <script src="../../../erd-generator.js"></script>
+    <script src="erd-functions.js"></script>
+    <script src="analyzeTextERD.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
     <script>
         // Application state
@@ -331,6 +338,82 @@
         let currentSessionId = null;
         let currentGeneratedSchema = '';
         let currentGeneratedAPI = '';
+        
+        // Fallback showToast function if not loaded
+        if (typeof showToast === 'undefined') {
+            window.showToast = function(message, type = 'info') {
+                console.log(`[${type.toUpperCase()}] ${message}`);
+                alert(`${type.toUpperCase()}: ${message}`);
+            };
+        }
+        
+        // Fallback downloadFile function if not loaded
+        if (typeof downloadFile === 'undefined') {
+            window.downloadFile = function(filename, content) {
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+        }
+        
+        // ERD generation function with relationships
+        function generateERDFromSchema(schema) {
+            const tables = parseSchemaToTables(schema);
+            let svg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">`;
+            svg += `<defs><style>.table-box{fill:#f8f9fa;stroke:#333;stroke-width:2;} .table-title{fill:#333;font-family:Arial;font-size:14px;font-weight:bold;} .table-field{fill:#666;font-family:Arial;font-size:12px;} .relationship{stroke:#666;stroke-width:2;fill:none;}</style></defs>`;
+            
+            const tablePositions = [];
+            
+            tables.forEach((table, index) => {
+                const x = 50 + (index % 3) * 250;
+                const y = 50 + Math.floor(index / 3) * 200;
+                const height = 40 + (table.columns.length * 20);
+                
+                tablePositions.push({name: table.name, x, y, width: 200, height});
+                
+                svg += `<rect class="table-box" x="${x}" y="${y}" width="200" height="${height}" rx="5"/>`;
+                svg += `<text class="table-title" x="${x + 10}" y="${y + 20}">${table.name}</text>`;
+                svg += `<line x1="${x}" y1="${y + 25}" x2="${x + 200}" y2="${y + 25}" stroke="#333" stroke-width="1"/>`;
+                
+                table.columns.forEach((col, colIndex) => {
+                    const isPK = col.constraints && col.constraints.some(c => c.includes('PRIMARY KEY'));
+                    const fieldY = y + 40 + (colIndex * 20);
+                    svg += `<text class="table-field" x="${x + 10}" y="${fieldY}">${isPK ? '🔑 ' : ''}${col.name}: ${col.type}</text>`;
+                });
+            });
+            
+            // Draw relationships
+            tables.forEach(table => {
+                table.columns.forEach(col => {
+                    if (col.constraints && col.constraints.some(c => c.includes('REFERENCES'))) {
+                        const refMatch = col.constraints.find(c => c.includes('REFERENCES'));
+                        const match = refMatch.match(/REFERENCES (\w+)/);
+                        if (match) {
+                            const fromTable = tablePositions.find(t => t.name === match[1]);
+                            const toTable = tablePositions.find(t => t.name === table.name);
+                            if (fromTable && toTable) {
+                                const x1 = fromTable.x + fromTable.width;
+                                const y1 = fromTable.y + fromTable.height / 2;
+                                const x2 = toTable.x;
+                                const y2 = toTable.y + toTable.height / 2;
+                                svg += `<line class="relationship" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+                                svg += `<circle cx="${x1}" cy="${y1}" r="3" fill="#333"/>`;
+                                svg += `<polygon points="${x2-8},${y2-4} ${x2},${y2} ${x2-8},${y2+4}" fill="#333"/>`;
+                            }
+                        }
+                    }
+                });
+            });
+            
+            svg += `</svg>`;
+            return svg;
+        }
         
         // Update currentGeneratedAPI when API is generated
         function updateGeneratedAPI(apiCode) {
@@ -507,6 +590,12 @@
                     currentGeneratedAPI = sessionData.results.apiCode;
                 }
                 
+                // Load chat history if it's a chat session
+                if (sessionData.type === 'chat' && sessionData.chatHistory) {
+                    chatHistory = sessionData.chatHistory;
+                    startInstantChat();
+                }
+                
                 showToast('📂 Session ' + sessionData.id + ' loaded', 'success');
                 toggleSidebar();
                 
@@ -516,10 +605,48 @@
         }
         
         function openNewSession() {
-            const newSessionId = Date.now().toString();
-            const url = window.location.origin + '/' + newSessionId;
-            window.open(url, '_blank');
-            showToast('+ New session opened in tab', 'success');
+            // Clear current session state
+            currentSessionId = Date.now().toString();
+            currentGeneratedSchema = '';
+            currentGeneratedAPI = '';
+            uploadedImages = [];
+            
+            // Reset UI elements
+            const resultsDiv = document.getElementById('results');
+            if (resultsDiv) resultsDiv.classList.add('hidden');
+            
+            const imageGallery = document.getElementById('imageGallery');
+            const uploadPrompt = document.getElementById('uploadPrompt');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            const analyzeText = document.getElementById('analyzeText');
+            
+            if (imageGallery) imageGallery.classList.add('hidden');
+            if (uploadPrompt) uploadPrompt.classList.remove('hidden');
+            if (analyzeBtn) {
+                analyzeBtn.disabled = true;
+                if (analyzeText) analyzeText.textContent = 'Select Images First';
+            }
+            
+            // Clear text inputs
+            const textERD = document.getElementById('textERD');
+            const mediaUrl = document.getElementById('mediaUrl');
+            const phoneNumber = document.getElementById('phoneNumber');
+            
+            if (textERD) textERD.value = '';
+            if (mediaUrl) mediaUrl.value = '';
+            if (phoneNumber) phoneNumber.value = '';
+            
+            // Update session display
+            document.getElementById('chatIdDisplay').textContent = currentSessionId;
+            document.getElementById('currentChatId').classList.remove('hidden');
+            
+            // Update URL
+            window.history.pushState({sessionId: currentSessionId}, '', '/' + currentSessionId);
+            
+            // Close sidebar
+            toggleSidebar();
+            
+            showToast('✨ New session started: ' + currentSessionId, 'success');
         }
 
         function deleteSession(sessionKey) {
@@ -2595,10 +2722,10 @@ const pool = new Pool({
                     optimizePerformance: document.getElementById('optimizePerformance')?.checked || false
                 };
                 
-                const response = await fetch('/api/schema/generate-api', {
+                const response = await fetch('/api/generate-api', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ schema, options })
+                    body: JSON.stringify({ analysis: { tables: parseSchemaToTables(schema) } })
                 });
                 
                 if (!response.ok) throw new Error('API generation failed: ' + response.statusText);
@@ -2921,14 +3048,20 @@ const pool = new Pool({
         
         function showInteractiveChatInterface() {
             const chatInterface = document.createElement('div');
+            chatInterface.id = 'chatInterface';
             chatInterface.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
             chatInterface.innerHTML = `
-                <div class="bg-gray-800 w-full max-w-2xl h-96 mx-4 rounded-lg border border-gray-600 flex flex-col">
+                <div id="chatWindow" class="bg-gray-800 w-full max-w-2xl h-96 mx-4 rounded-lg border border-gray-600 flex flex-col transition-all duration-300">
                     <div class="bg-gray-700 p-4 rounded-t-lg flex justify-between items-center">
                         <h3 class="text-white font-bold">💬 AI Agent Chat Session</h3>
-                        <button onclick="closeChatSession()" class="text-gray-400 hover:text-white">
-                            ✕
-                        </button>
+                        <div class="flex space-x-2">
+                            <button onclick="maximizeChat()" class="text-gray-400 hover:text-white transition-colors" title="Maximize">
+                                🔲
+                            </button>
+                            <button onclick="closeChatSession()" class="text-gray-400 hover:text-white transition-colors">
+                                ✕
+                            </button>
+                        </div>
                     </div>
                     <div id="chatMessages" class="flex-1 p-4 overflow-y-auto bg-gray-900">
                         <div class="mb-4">
@@ -2956,6 +3089,8 @@ const pool = new Pool({
             }, 100);
         }
         
+        let chatHistory = [];
+        
         async function sendChatMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
@@ -2969,42 +3104,214 @@ const pool = new Pool({
             userMsg.innerHTML = `<div class="bg-green-600 text-white p-3 rounded-lg inline-block">${message}</div>`;
             messagesDiv.appendChild(userMsg);
             
+            chatHistory.push({type: 'user', message: message, timestamp: Date.now()});
+            
             input.value = '';
             
             const aiResponse = generateChatResponse(message);
             
             const aiMsg = document.createElement('div');
             aiMsg.className = 'mb-4';
-            aiMsg.innerHTML = `<div class="bg-blue-600 text-white p-3 rounded-lg inline-block">🤖 ${aiResponse}</div>`;
+            aiMsg.innerHTML = `<div class="bg-blue-600 text-white p-3 rounded-lg inline-block max-w-full">🤖 ${aiResponse}</div>`;
             messagesDiv.appendChild(aiMsg);
+            
+            chatHistory.push({type: 'ai', message: aiResponse, timestamp: Date.now()});
+            saveChatHistory();
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function saveChatHistory() {
+            localStorage.setItem('chat_history_' + currentSessionId, JSON.stringify(chatHistory));
+        }
+        
+        function loadChatHistory() {
+            const saved = localStorage.getItem('chat_history_' + currentSessionId);
+            if (saved) {
+                chatHistory = JSON.parse(saved);
+                const messagesDiv = document.getElementById('chatMessages');
+                if (messagesDiv) {
+                    messagesDiv.innerHTML = '<div class="mb-4"><div class="bg-blue-600 text-white p-3 rounded-lg inline-block">👋 Hello! I\'m your AI Database Agent. How can I help you with your ERD analysis today?</div></div>';
+                    chatHistory.forEach(chat => {
+                        const msgDiv = document.createElement('div');
+                        msgDiv.className = chat.type === 'user' ? 'mb-4 text-right' : 'mb-4';
+                        const bgColor = chat.type === 'user' ? 'bg-green-600' : 'bg-blue-600';
+                        msgDiv.innerHTML = `<div class="${bgColor} text-white p-3 rounded-lg inline-block max-w-full">${chat.type === 'ai' ? '🤖 ' : ''}${chat.message}</div>`;
+                        messagesDiv.appendChild(msgDiv);
+                    });
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            }
+        }
+        
+        function startInstantChat() {
+            showInteractiveChatInterface();
+            setTimeout(() => loadChatHistory(), 100);
         }
         
         function generateChatResponse(message) {
             const text = message.toLowerCase();
             
-            if (text.includes('schema') || text.includes('database')) {
-                return 'I can help you with database schemas! Would you like me to analyze an ERD image or generate a schema from your description?';
+            // Handle download requests
+            if (text.includes('download')) {
+                if (text.includes('schema') && currentGeneratedSchema) {
+                    downloadFile('database-schema.sql', currentGeneratedSchema);
+                    return '💾 Downloaded database schema as "database-schema.sql"!';
+                }
+                if (text.includes('api') && currentGeneratedAPI) {
+                    downloadFile('api-server.js', currentGeneratedAPI);
+                    return '💾 Downloaded API code as "api-server.js"!';
+                }
+                if (text.includes('erd') && currentGeneratedSchema) {
+                    const erdSvg = generateERDFromSchema(currentGeneratedSchema);
+                    downloadFile('database-erd.svg', erdSvg);
+                    return '💾 Downloaded ERD diagram as "database-erd.svg"!';
+                }
+                if (currentGeneratedSchema && currentGeneratedAPI) {
+                    downloadFile('database-schema.sql', currentGeneratedSchema);
+                    downloadFile('api-server.js', currentGeneratedAPI);
+                    return '💾 Downloaded both schema and API files!';
+                }
+                return '❌ No files available to download. Generate a schema or API first!';
             }
-            if (text.includes('api') || text.includes('endpoint')) {
-                return 'Great! I can generate REST API endpoints from your database schema. Do you have a schema ready, or would you like me to create one first?';
+            
+            // Handle ERD requests
+            if (text.includes('erd') || text.includes('diagram')) {
+                if (text.includes('create') || text.includes('generate') || text.includes('show')) {
+                    const schema = currentGeneratedSchema || generateSchemaFromUserRequest(message);
+                    currentGeneratedSchema = schema;
+                    const erdSvg = generateERDFromSchema(schema);
+                    return `📊 I've created an ERD diagram for your database:\n\n<div class="bg-white p-4 rounded border">${erdSvg}</div>\n\n<button onclick="downloadFile('database-erd.svg', \`${erdSvg}\`)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mt-2 font-medium transition-colors">💾 Download ERD</button>`;
+                }
+                return '📊 I can create ERD diagrams! Try saying "create ERD" or "show me the diagram".';
             }
-            if (text.includes('sql') || text.includes('query')) {
-                return 'I can help convert your natural language requests into SQL queries. What data are you trying to retrieve?';
+            
+            // Actually generate schemas and APIs based on user requests
+            if (text.includes('create') && (text.includes('schema') || text.includes('database'))) {
+                const schema = generateSchemaFromUserRequest(message);
+                currentGeneratedSchema = schema;
+                return `✅ I've created a database schema for "${message}":\n\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto">${schema}</pre>\n\n<button onclick="downloadFile('database-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm mt-2 font-medium transition-colors">💾 Download Schema</button>`;
             }
+            
+            if (text.includes('generate') && text.includes('api')) {
+                const apiCode = generateAPIFromUserRequest(message);
+                currentGeneratedAPI = apiCode;
+                return `🚀 I've generated a REST API for "${message}":\n\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto">${apiCode}</pre>\n\n<button onclick="downloadFile('api-server.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm mt-2 font-medium transition-colors">💾 Download API</button>`;
+            }
+            
+            if (text.includes('ecommerce') || text.includes('shop') || text.includes('store')) {
+                const schema = generateEcommerceSchema();
+                const apiCode = generateEcommerceAPI();
+                currentGeneratedSchema = schema;
+                currentGeneratedAPI = apiCode;
+                return `🛒 Perfect! I've created a complete e-commerce solution:\n\n<strong>📊 Database Schema:</strong>\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto mb-3">${schema}</pre>\n<strong>🚀 REST API:</strong>\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto">${apiCode}</pre>\n\n<div class="flex space-x-2 mt-3">\n<button onclick="downloadFile('ecommerce-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download Schema</button>\n<button onclick="downloadFile('ecommerce-api.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download API</button>\n</div>`;
+            }
+            
+            if (text.includes('blog') || text.includes('cms') || text.includes('content')) {
+                const schema = generateBlogSchema();
+                const apiCode = generateBlogAPI();
+                currentGeneratedSchema = schema;
+                currentGeneratedAPI = apiCode;
+                return `📝 Great! I've created a blog/CMS solution:\n\n<strong>📊 Database Schema:</strong>\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto mb-3">${schema}</pre>\n<strong>🚀 REST API:</strong>\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto">${apiCode}</pre>\n\n<div class="flex space-x-2 mt-3">\n<button onclick="downloadFile('blog-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download Schema</button>\n<button onclick="downloadFile('blog-api.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download API</button>\n</div>`;
+            }
+            
             if (text.includes('help')) {
-                return 'I can help you with: 1) Analyzing ERD images, 2) Generating database schemas, 3) Creating REST APIs, 4) Converting natural language to SQL. What would you like to work on?';
+                return 'I can help you with:\n1) Creating database schemas ("create schema for ecommerce")\n2) Generating REST APIs ("generate API for blog")\n3) Creating ERD diagrams ("create ERD" or "show diagram")\n4) Downloading files ("download schema", "download api", "download erd")\n5) Analyzing ERD images\n\nJust tell me what you want to build!';
             }
             
-            return `I understand you're asking about "${message}". I can help you transform that into a database solution. Would you like me to create a schema, generate an API, or analyze an ERD for this?`;
+            // Default: try to generate something based on the message
+            const schema = generateSchemaFromUserRequest(message);
+            const apiCode = generateAPIFromUserRequest(message);
+            currentGeneratedSchema = schema;
+            currentGeneratedAPI = apiCode;
             
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return `🤖 I've analyzed "${message}" and created:\n\n<strong>📊 Database Schema:</strong>\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto mb-3">${schema}</pre>\n<strong>🚀 REST API:</strong>\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto">${apiCode}</pre>\n\n<div class="flex space-x-2 mt-3">\n<button onclick="downloadFile('database-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download Schema</button>\n<button onclick="downloadFile('api-server.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download API</button>\n</div>`;
+        }
+        
+        function generateSchemaFromUserRequest(message) {
+            const text = message.toLowerCase();
+            
+            if (text.includes('user') || text.includes('customer') || text.includes('account')) {
+                return `-- Generated Schema for: ${message}\n\nCREATE TABLE users (\n    user_id SERIAL PRIMARY KEY,\n    username VARCHAR(50) UNIQUE NOT NULL,\n    email VARCHAR(255) UNIQUE NOT NULL,\n    password_hash VARCHAR(255) NOT NULL,\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE profiles (\n    profile_id SERIAL PRIMARY KEY,\n    user_id INTEGER REFERENCES users(user_id),\n    first_name VARCHAR(100),\n    last_name VARCHAR(100),\n    phone VARCHAR(20)\n);`;
+            }
+            
+            if (text.includes('product') || text.includes('inventory') || text.includes('item')) {
+                return `-- Generated Schema for: ${message}\n\nCREATE TABLE products (\n    product_id SERIAL PRIMARY KEY,\n    name VARCHAR(200) NOT NULL,\n    description TEXT,\n    price DECIMAL(10,2) NOT NULL,\n    stock_quantity INTEGER DEFAULT 0,\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE categories (\n    category_id SERIAL PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    description TEXT\n);`;
+            }
+            
+            return generateDemoSchema();
+        }
+        
+        function generateAPIFromUserRequest(message) {
+            const text = message.toLowerCase();
+            
+            if (text.includes('user') || text.includes('customer')) {
+                return `// Generated API for: ${message}\nconst express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Users API\napp.get('/api/users', (req, res) => {\n    res.json({ message: 'Get all users' });\n});\n\napp.post('/api/users', (req, res) => {\n    res.json({ message: 'User created', data: req.body });\n});\n\napp.get('/api/users/:id', (req, res) => {\n    res.json({ message: \`Get user \${req.params.id}\` });\n});\n\napp.listen(3000);`;
+            }
+            
+            return generateDemoAPICode();
+        }
+        
+        function generateEcommerceSchema() {
+            return `-- E-commerce Database Schema\n\nCREATE TABLE customers (\n    customer_id SERIAL PRIMARY KEY,\n    email VARCHAR(255) UNIQUE NOT NULL,\n    first_name VARCHAR(100) NOT NULL,\n    last_name VARCHAR(100) NOT NULL,\n    phone VARCHAR(20),\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE products (\n    product_id SERIAL PRIMARY KEY,\n    name VARCHAR(200) NOT NULL,\n    description TEXT,\n    price DECIMAL(10,2) NOT NULL,\n    stock_quantity INTEGER DEFAULT 0,\n    category_id INTEGER REFERENCES categories(category_id)\n);\n\nCREATE TABLE categories (\n    category_id SERIAL PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    description TEXT\n);\n\nCREATE TABLE orders (\n    order_id SERIAL PRIMARY KEY,\n    customer_id INTEGER REFERENCES customers(customer_id),\n    order_date TIMESTAMP DEFAULT NOW(),\n    total_amount DECIMAL(10,2) NOT NULL,\n    status VARCHAR(50) DEFAULT 'pending'\n);`;
+        }
+        
+        function generateEcommerceAPI() {
+            return `// E-commerce REST API\nconst express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Customers\napp.get('/api/customers', (req, res) => res.json([]));\napp.post('/api/customers', (req, res) => res.json({id: 1}));\n\n// Products\napp.get('/api/products', (req, res) => res.json([]));\napp.post('/api/products', (req, res) => res.json({id: 1}));\n\n// Orders\napp.get('/api/orders', (req, res) => res.json([]));\napp.post('/api/orders', (req, res) => res.json({id: 1}));\n\napp.listen(3000);`;
+        }
+        
+        function generateBlogSchema() {
+            return `-- Blog/CMS Database Schema\n\nCREATE TABLE users (\n    user_id SERIAL PRIMARY KEY,\n    username VARCHAR(50) UNIQUE NOT NULL,\n    email VARCHAR(255) UNIQUE NOT NULL,\n    role VARCHAR(20) DEFAULT 'author',\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE posts (\n    post_id SERIAL PRIMARY KEY,\n    user_id INTEGER REFERENCES users(user_id),\n    title VARCHAR(255) NOT NULL,\n    content TEXT NOT NULL,\n    status VARCHAR(20) DEFAULT 'draft',\n    published_at TIMESTAMP\n);\n\nCREATE TABLE comments (\n    comment_id SERIAL PRIMARY KEY,\n    post_id INTEGER REFERENCES posts(post_id),\n    user_id INTEGER REFERENCES users(user_id),\n    content TEXT NOT NULL,\n    created_at TIMESTAMP DEFAULT NOW()\n);`;
+        }
+        
+        function generateBlogAPI() {
+            return `// Blog/CMS REST API\nconst express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Users\napp.get('/api/users', (req, res) => res.json([]));\napp.post('/api/users', (req, res) => res.json({id: 1}));\n\n// Posts\napp.get('/api/posts', (req, res) => res.json([]));\napp.post('/api/posts', (req, res) => res.json({id: 1}));\n\n// Comments\napp.get('/api/comments', (req, res) => res.json([]));\napp.post('/api/comments', (req, res) => res.json({id: 1}));\n\napp.listen(3000);`;
+        }
+        
+        let isChatMaximized = false;
+        
+        function maximizeChat() {
+            const chatWindow = document.getElementById('chatWindow');
+            const chatInterface = document.getElementById('chatInterface');
+            
+            if (!chatWindow || !chatInterface) return;
+            
+            if (!isChatMaximized) {
+                // Maximize
+                chatWindow.className = 'bg-gray-800 w-full h-full rounded-none border border-gray-600 flex flex-col transition-all duration-300';
+                chatInterface.className = 'fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50';
+                isChatMaximized = true;
+                showToast('🔲 Chat maximized', 'info');
+            } else {
+                // Restore
+                chatWindow.className = 'bg-gray-800 w-full max-w-2xl h-96 mx-4 rounded-lg border border-gray-600 flex flex-col transition-all duration-300';
+                chatInterface.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                isChatMaximized = false;
+                showToast('🔳 Chat restored', 'info');
+            }
         }
         
         function closeChatSession() {
-            const chatInterface = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
+            // Save chat session to history
+            if (chatHistory.length > 0) {
+                const sessionData = {
+                    id: currentSessionId,
+                    type: 'chat',
+                    timestamp: new Date().toISOString(),
+                    chatHistory: chatHistory,
+                    messageCount: chatHistory.length
+                };
+                localStorage.setItem('erd_session_' + currentSessionId, JSON.stringify(sessionData));
+                loadSessionHistory(); // Refresh sidebar
+            }
+            
+            // Clear current chat
+            chatHistory = [];
+            
+            const chatInterface = document.getElementById('chatInterface');
             if (chatInterface && chatInterface.parentNode) {
                 chatInterface.parentNode.removeChild(chatInterface);
-                showToast('💬 Chat session ended', 'info');
+                isChatMaximized = false;
+                showToast('💬 Chat session saved and ended', 'info');
             }
         }
 
@@ -4000,17 +4307,45 @@ app.listen(3000, () => {
 });`;
         }
         
-        function requestCall() {
-            const phoneNumber = document.getElementById('phoneNumber').value;
+        async function requestCall() {
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
             if (!phoneNumber) {
-                showToast('Please enter a phone number', 'error');
+                alert('Please enter a phone number');
                 return;
             }
             
-            showToast('📞 Calling ' + phoneNumber + '...', 'info');
-            setTimeout(() => {
-                showToast('📞 Call initiated successfully!', 'success');
-            }, 3000);
+            try {
+                const response = await fetch('/api/request-call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phoneNumber: phoneNumber,
+                        purpose: 'Database consultation',
+                        sessionId: currentSessionId || Date.now().toString()
+                    })
+                });
+                
+                const text = await response.text();
+                let result;
+                
+                try {
+                    result = JSON.parse(text);
+                } catch (e) {
+                    console.error('JSON parse error:', text);
+                    alert('Server error: ' + text.substring(0, 100));
+                    return;
+                }
+                
+                if (result.success) {
+                    alert('📞 Call request successful! You will receive a call shortly.');
+                } else {
+                    alert('❌ Call failed: ' + (result.error || 'Unknown error'));
+                }
+                
+            } catch (error) {
+                console.error('Request error:', error);
+                alert('❌ Network error: ' + error.message);
+            }
         }
         
         function startVideoCall() {
