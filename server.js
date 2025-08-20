@@ -3,6 +3,10 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const SimpleVisionService = require('./src/infrastructure/services/SimpleVisionService');
+const SimpleVoIPService = require('./src/infrastructure/services/SimpleVoIPService');
+const SimpleAIAgentService = require('./src/infrastructure/services/SimpleAIAgentService');
+const SimpleRAGService = require('./src/infrastructure/services/SimpleRAGService');
 
 // Try to load canvas, fallback if not available
 let createCanvas = null;
@@ -14,11 +18,46 @@ try {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
+
+// Initialize simple services
+const visionService = new SimpleVisionService();
+const voipService = new SimpleVoIPService();
+const aiAgentService = new SimpleAIAgentService();
+const ragService = new SimpleRAGService();
 
 // Middleware
 app.use(express.json());
-app.use(express.static('src/presentation/web'));
+
+// Static file serving with proper MIME types
+app.use(express.static('src/presentation/web', {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        } else if (path.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        }
+    }
+}));
+
+// Explicit routes for problematic JS files
+app.get('/real-time-client.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.sendFile(path.join(__dirname, 'src/presentation/web/real-time-client.js'));
+});
+
+app.get('/erd-generator.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.sendFile(path.join(__dirname, 'src/presentation/web/erd-generator.js'));
+});
+
+app.get('/voip-realtime.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.sendFile(path.join(__dirname, 'src/presentation/web/voip-realtime.js'));
+});
+
+// Socket.IO will be initialized after server creation
+let io;
 
 // File upload configuration
 const upload = multer({
@@ -39,48 +78,43 @@ app.get('/', (req, res) => {
 });
 
 app.post('/api/analyze-image', upload.single('image'), async (req, res) => {
+    const startTime = Date.now();
+    
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No image file provided' });
         }
 
-        // Simulate image analysis
-        const analysis = {
-            tables: [
-                {
-                    name: 'users',
-                    columns: [
-                        { name: 'user_id', type: 'SERIAL', constraints: ['PRIMARY KEY'] },
-                        { name: 'username', type: 'VARCHAR(50)', constraints: ['UNIQUE', 'NOT NULL'] },
-                        { name: 'email', type: 'VARCHAR(255)', constraints: ['UNIQUE', 'NOT NULL'] }
-                    ]
-                },
-                {
-                    name: 'posts',
-                    columns: [
-                        { name: 'post_id', type: 'SERIAL', constraints: ['PRIMARY KEY'] },
-                        { name: 'user_id', type: 'INTEGER', constraints: ['REFERENCES users(user_id)'] },
-                        { name: 'title', type: 'VARCHAR(255)', constraints: ['NOT NULL'] },
-                        { name: 'content', type: 'TEXT', constraints: [] }
-                    ]
-                }
-            ],
-            relationships: [
-                {
-                    from_table: 'users',
-                    to_table: 'posts',
-                    type: 'one_to_many'
-                }
-            ]
-        };
-
+        const imageBuffer = fs.readFileSync(req.file.path);
+        
+        // Real-time vision analysis with validation
+        const analysis = await visionService.analyzeERDImage(imageBuffer);
+        
+        // Add processing metadata
+        analysis.processing_time = Date.now() - startTime;
+        analysis.file_size = req.file.size;
+        analysis.timestamp = new Date().toISOString();
+        
         // Clean up uploaded file
         fs.unlinkSync(req.file.path);
-
-        res.json({ success: true, analysis });
+        
+        res.json({ 
+            success: true, 
+            analysis,
+            processing_time: analysis.processing_time + 'ms'
+        });
     } catch (error) {
         console.error('Image analysis error:', error);
-        res.status(500).json({ error: 'Analysis failed' });
+        
+        // Clean up file on error
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        
+        res.status(500).json({ 
+            error: 'Analysis failed: ' + error.message,
+            processing_time: (Date.now() - startTime) + 'ms'
+        });
     }
 });
 
@@ -419,7 +453,95 @@ if (process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN) {
     console.log('⚠️  Twilio credentials not found - using simulation mode');
 }
 
-// Phone call request endpoint
+// Simple VoIP Call Endpoints
+app.post('/api/voip/start-call', async (req, res) => {
+    try {
+        const { phoneNumber, clientId } = req.body;
+        
+        const result = await voipService.startVoIPCall(phoneNumber, clientId);
+        
+        if (result.success) {
+            // Start AI agent session
+            const agentSession = await aiAgentService.startAIAgent(result.callId, phoneNumber);
+            res.json({ ...result, agentSession });
+        } else {
+            res.status(500).json(result);
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/voip/end-call', async (req, res) => {
+    try {
+        const { callId } = req.body;
+        
+        const result = voipService.endCall(callId);
+        const report = await aiAgentService.endSession(callId);
+        
+        res.json({ ...result, report });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/voip/report/:callId', (req, res) => {
+    const { callId } = req.params;
+    const report = voipService.getCallReport(callId);
+    res.json({ success: true, report });
+});
+
+// AI Agent Endpoints
+app.post('/api/agent/start-session', async (req, res) => {
+    try {
+        const { phoneNumber, type } = req.body;
+        const sessionId = 'session_' + Date.now();
+        
+        const result = await aiAgentService.startAIAgent(sessionId, phoneNumber);
+        res.json({ success: true, sessionId, ...result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/agent/end-session/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const report = await aiAgentService.endSession(sessionId);
+        res.json({ success: true, report });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/agent/text-input', async (req, res) => {
+    try {
+        const { sessionId, text } = req.body;
+        
+        // Use RAG for intelligent responses
+        const ragResponse = await ragService.generateRAGResponse(text);
+        
+        res.json({ 
+            success: true, 
+            response: ragResponse,
+            sessionId 
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/agent/report/:sessionId', async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const report = await aiAgentService.endSession(sessionId);
+        res.json({ success: true, report });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Legacy phone call endpoint
 app.post('/api/request-call', async (req, res) => {
     try {
         const { phoneNumber, purpose, sessionId } = req.body;
@@ -510,7 +632,7 @@ app.post('/api/request-call', async (req, res) => {
     }
 });
 
-// TwiML endpoint for call handling
+// Legacy TwiML endpoint
 app.post('/api/voice/twiml', (req, res) => {
     try {
         let twiml;
@@ -636,16 +758,67 @@ app.get('/health', (req, res) => {
     });
 });
 
+// 404 handler for missing files
+app.use((req, res, next) => {
+    if (req.path.endsWith('.js')) {
+        console.log(`❌ Missing JS file: ${req.path}`);
+        res.status(404).send(`// File not found: ${req.path}`);
+    } else {
+        next();
+    }
+});
+
 // Error handling
 app.use((error, req, res, next) => {
     console.error('Server error:', error);
     res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server with WebSocket support
+const http = require('http');
+const server = http.createServer(app);
+
+// Initialize Socket.IO after server creation
+const { Server } = require('socket.io');
+io = new Server(server, {
+    cors: { 
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    allowEIO3: true,
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
+});
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+    console.log('✅ Socket.IO client connected:', socket.id);
+    
+    socket.emit('welcome', { message: 'Connected to AI Database Agent' });
+    
+    socket.on('disconnect', () => {
+        console.log('❌ Socket.IO client disconnected:', socket.id);
+    });
+    
+    socket.on('error', (error) => {
+        console.error('Socket.IO error:', error);
+    });
+});
+
+// Initialize WebSocket for VoIP
+try {
+    voipService.initializeWebSocketServer(server);
+} catch (error) {
+    console.log('VoIP WebSocket initialization skipped:', error.message);
+}
+
+server.listen(PORT, () => {
     console.log(`🚀 AI Database-to-API Agent running on port ${PORT}`);
     console.log(`📱 Open http://localhost:${PORT} to get started`);
+    console.log(`🔊 VoIP WebSocket server ready`);
+    console.log(`⚡ Socket.IO server ready`);
+    console.log(`📁 Static files served from: src/presentation/web`);
 });
 
 module.exports = app;

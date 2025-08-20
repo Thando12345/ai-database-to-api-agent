@@ -226,8 +226,8 @@
                             <span>💬 Instant Chat</span>
                         </button>
                         
-                        <button onclick="startVideoCall()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2">
-                            <span>📹 Video Call</span>
+                        <button onclick="startVoIPVideoCall()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2">
+                            <span>📹 VoIP Video Call</span>
                         </button>
                     </div>
                     
@@ -426,6 +426,38 @@
         let isRecording = false;
         let socket = null;
         let realTimeResults = new Map();
+        
+        // Initialize WebSocket connection
+        function initializeWebSocket() {
+            try {
+                socket = io('http://localhost:3000', {
+                    transports: ['websocket', 'polling'],
+                    timeout: 20000,
+                    forceNew: true
+                });
+                
+                socket.on('connect', () => {
+                    console.log('🔌 Connected to real-time server');
+                    showToast('🔌 Real-time connection established', 'success');
+                });
+                
+                socket.on('disconnect', () => {
+                    console.log('Socket disconnected');
+                    showToast('⚠️ Real-time connection lost', 'warning');
+                });
+                
+                socket.on('error', (error) => {
+                    console.error('Socket error:', error);
+                });
+                
+                socket.on('welcome', (data) => {
+                    console.log('Welcome message:', data);
+                });
+                
+            } catch (error) {
+                console.error('WebSocket initialization failed:', error);
+            }
+        }
 
         // Initialize application
         document.addEventListener('DOMContentLoaded', () => {
@@ -754,6 +786,13 @@
         async function analyzeImages() {
             if (uploadedImages.length === 0) return;
             
+            // Real-time validation
+            const validation = await RealTimeValidator.validateImageUpload(uploadedImages[0].file);
+            if (!validation.valid) {
+                showToast('❌ ' + validation.errors.join(', '), 'error');
+                return;
+            }
+            
             const options = {
                 includeIndexes: document.getElementById('includeIndexes').checked,
                 addConstraints: document.getElementById('addConstraints').checked,
@@ -763,17 +802,28 @@
             showProfessionalAnalysisUI();
             
             try {
-                // Use real-time processing if available
-                if (window.realTimeClient && window.realTimeClient.isConnected) {
-                    showToast('🚀 Using real-time AI processing...', 'info');
-                    const result = await window.realTimeClient.processImageRealTime(uploadedImages[0].file, currentSessionId);
-                    showAnalysisResults(result.analysis);
-                } else {
-                    // Fallback to regular processing
-                    showToast('⚠️ Using fallback processing...', 'warning');
-                    const analysis = await processImagesWithVision(uploadedImages);
-                    showAnalysisResults(analysis);
+                showToast('🔍 Real-time vision analysis starting...', 'info');
+                
+                const formData = new FormData();
+                formData.append('image', uploadedImages[0].file);
+                
+                const response = await fetch('/api/analyze-image', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error('Analysis failed');
+                
+                const result = await response.json();
+                
+                // Validate analysis results
+                const analysisValidation = RealTimeValidator.validateERDAnalysis(result.analysis);
+                if (!analysisValidation.valid) {
+                    throw new Error('Invalid analysis: ' + analysisValidation.errors.join(', '));
                 }
+                
+                showToast(`✅ Analysis complete! Quality score: ${analysisValidation.score}/100`, 'success');
+                showAnalysisResults(result.analysis);
                 
             } catch (error) {
                 console.error('Analysis error:', error);
@@ -6025,6 +6075,15 @@ app.listen(3000, () => {
             }, 4000);
         }
     </script>
+    <script src="../../voip-realtime.js"></script>
+    <script src="image-validator.js"></script>
+    <script src="realtime-communications.js"></script>
+    <script src="enhanced-functions.js"></script>
+    <script src="video-call-enhancements.js"></script>
+    <script src="simple-voip-client.js"></script>
+    <script src="video-agent-client.js"></script>
+    <script src="RealTimeValidator.js"></script>
+    <link rel="stylesheet" href="animations.css">
 </body>
 </html>
     <style>
