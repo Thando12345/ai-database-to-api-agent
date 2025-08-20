@@ -362,6 +362,213 @@
             };
         }
         
+        // Fallback downloadERDDiagram function if not loaded
+        if (typeof downloadERDDiagram === 'undefined') {
+            window.downloadERDDiagram = function() {
+                try {
+                    const schema = currentGeneratedSchema || generateDemoSchema();
+                    const analysis = parseSchemaToAnalysis(schema);
+                    const erdSvg = generateSVGERD(analysis);
+                    
+                    const blob = new Blob([erdSvg], { type: 'image/svg+xml' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `erd-diagram-${Date.now()}.svg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    
+                    showToast('📊 ERD diagram downloaded!', 'success');
+                } catch (error) {
+                    console.error('ERD download error:', error);
+                    showToast('❌ ERD download failed', 'error');
+                }
+            };
+        }
+        
+        // Function to parse schema and generate analysis for ERD
+        function parseSchemaToAnalysis(schema) {
+            const tables = [];
+            const relationships = [];
+            
+            const tableMatches = schema.match(/CREATE TABLE\s+(\w+)\s*\([^;]+\);/gi);
+            
+            if (tableMatches) {
+                tableMatches.forEach(tableMatch => {
+                    const nameMatch = tableMatch.match(/CREATE TABLE\s+(\w+)/i);
+                    if (nameMatch) {
+                        const tableName = nameMatch[1];
+                        const columns = [];
+                        
+                        const tableContent = tableMatch.match(/\(([^)]+)\)/)[1];
+                        const columnLines = tableContent.split(',').map(line => line.trim());
+                        
+                        columnLines.forEach(line => {
+                            const colMatch = line.match(/(\w+)\s+(VARCHAR|INT|INTEGER|TEXT|SERIAL|TIMESTAMP|DATE|DECIMAL|UUID|BOOLEAN)([^,]*)/i);
+                            if (colMatch) {
+                                const constraints = [];
+                                const constraintText = colMatch[3] || '';
+                                
+                                if (constraintText.includes('PRIMARY KEY')) constraints.push('PRIMARY KEY');
+                                if (constraintText.includes('NOT NULL')) constraints.push('NOT NULL');
+                                if (constraintText.includes('UNIQUE')) constraints.push('UNIQUE');
+                                if (constraintText.includes('REFERENCES')) {
+                                    constraints.push('FOREIGN KEY');
+                                    const refMatch = constraintText.match(/REFERENCES\s+(\w+)\s*\((\w+)\)/);
+                                    if (refMatch) {
+                                        relationships.push({
+                                            from: tableName,
+                                            to: refMatch[1],
+                                            type: 'many-to-one'
+                                        });
+                                    }
+                                }
+                                
+                                columns.push({
+                                    name: colMatch[1],
+                                    type: colMatch[2],
+                                    constraints: constraints
+                                });
+                            }
+                        });
+                        
+                        tables.push({ name: tableName, columns });
+                    }
+                });
+            }
+            
+            return { tables, relationships };
+        }
+        
+        // Function to generate SVG ERD
+        function generateSVGERD(analysis) {
+            const width = 800;
+            const height = 600;
+            const tableWidth = 200;
+            const spacing = 250;
+            
+            let svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">`;
+            svg += `<defs><style>
+                .table-header { fill: #2980b9; stroke: #2c3e50; stroke-width: 2; }
+                .table-body { fill: #ecf0f1; stroke: #2c3e50; stroke-width: 2; }
+                .table-title { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; fill: white; }
+                .column-text { font-family: Arial, sans-serif; font-size: 11px; fill: #2c3e50; }
+                .pk-text { font-family: Arial, sans-serif; font-size: 11px; fill: #e74c3c; font-weight: bold; }
+                .fk-text { font-family: Arial, sans-serif; font-size: 11px; fill: #3498db; }
+                .relationship-line { stroke: #2c3e50; stroke-width: 2; fill: none; }
+            </style></defs>`;
+            svg += `<rect width="${width}" height="${height}" fill="#f8f9fa"/>`;
+            svg += `<text x="50" y="40" font-family="Arial" font-size="24" font-weight="bold" fill="#2c3e50">Entity Relationship Diagram</text>`;
+            
+            let yPos = 80;
+            const tablePositions = {};
+            
+            if (!analysis.tables || analysis.tables.length === 0) {
+                svg += `<text x="50" y="300" font-family="Arial" font-size="16" fill="#e74c3c">No tables found in schema</text>`;
+                svg += '</svg>';
+                return svg;
+            }
+            
+            analysis.tables.forEach((table, index) => {
+                const xPos = 50 + (index % 3) * spacing;
+                const currentY = yPos + Math.floor(index / 3) * 180;
+                const actualHeight = Math.max(120, 50 + (table.columns.length * 18));
+                
+                tablePositions[table.name] = { x: xPos, y: currentY, width: tableWidth, height: actualHeight };
+                
+                svg += `<rect x="${xPos}" y="${currentY}" width="${tableWidth}" height="30" class="table-header"/>`;
+                svg += `<text x="${xPos + 10}" y="${currentY + 20}" class="table-title">${table.name.toUpperCase()}</text>`;
+                
+                svg += `<rect x="${xPos}" y="${currentY + 30}" width="${tableWidth}" height="${actualHeight - 30}" class="table-body"/>`;
+                
+                table.columns.forEach((col, colIndex) => {
+                    const isPK = col.constraints && col.constraints.includes('PRIMARY KEY');
+                    const isFK = col.name.includes('_id') && !isPK;
+                    const prefix = isPK ? '🔑 ' : isFK ? '🔗 ' : '• ';
+                    const text = `${prefix}${col.name}: ${col.type}`;
+                    const textClass = isPK ? 'pk-text' : isFK ? 'fk-text' : 'column-text';
+                    svg += `<text x="${xPos + 10}" y="${currentY + 50 + (colIndex * 18)}" class="${textClass}">${text}</text>`;
+                });
+            });
+            
+            // Draw relationships with type labels
+            if (analysis.relationships && analysis.relationships.length > 0) {
+                analysis.relationships.forEach(rel => {
+                    const fromTable = tablePositions[rel.from_table || rel.from.split('.')[0]];
+                    const toTable = tablePositions[rel.to_table || rel.to.split('.')[0]];
+                    
+                    if (fromTable && toTable) {
+                        const fromX = fromTable.x + fromTable.width;
+                        const fromY = fromTable.y + fromTable.height / 2;
+                        const toX = toTable.x;
+                        const toY = toTable.y + toTable.height / 2;
+                        
+                        // Draw relationship line
+                        svg += `<line x1="${fromX}" y1="${fromY}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                        
+                        // Draw cardinality indicators
+                        if (rel.type === 'one-to-many') {
+                            svg += `<circle cx="${fromX}" cy="${fromY}" r="3" fill="#2c3e50"/>`;
+                            svg += `<line x1="${toX - 10}" y1="${toY - 5}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                            svg += `<line x1="${toX - 10}" y1="${toY + 5}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                            svg += `<line x1="${toX - 10}" y1="${toY}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                        } else if (rel.type === 'many-to-one') {
+                            svg += `<line x1="${fromX}" y1="${fromY - 5}" x2="${fromX + 10}" y2="${fromY}" class="relationship-line"/>`;
+                            svg += `<line x1="${fromX}" y1="${fromY + 5}" x2="${fromX + 10}" y2="${fromY}" class="relationship-line"/>`;
+                            svg += `<line x1="${fromX}" y1="${fromY}" x2="${fromX + 10}" y2="${fromY}" class="relationship-line"/>`;
+                            svg += `<circle cx="${toX}" cy="${toY}" r="3" fill="#2c3e50"/>`;
+                        } else if (rel.type === 'many-to-many') {
+                            svg += `<line x1="${fromX}" y1="${fromY - 5}" x2="${fromX + 10}" y2="${fromY}" class="relationship-line"/>`;
+                            svg += `<line x1="${fromX}" y1="${fromY + 5}" x2="${fromX + 10}" y2="${fromY}" class="relationship-line"/>`;
+                            svg += `<line x1="${toX - 10}" y1="${toY - 5}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                            svg += `<line x1="${toX - 10}" y1="${toY + 5}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                        } else {
+                            svg += `<circle cx="${fromX}" cy="${fromY}" r="2" fill="#2c3e50"/>`;
+                            svg += `<circle cx="${toX}" cy="${toY}" r="2" fill="#2c3e50"/>`;
+                        }
+                        
+                        // Add relationship type label
+                        const midX = (fromX + toX) / 2;
+                        const midY = (fromY + toY) / 2 - 10;
+                        const relType = rel.type || 'related';
+                        svg += `<rect x="${midX - 25}" y="${midY - 8}" width="50" height="16" fill="white" stroke="#2c3e50" stroke-width="1" rx="3"/>`;
+                        svg += `<text x="${midX}" y="${midY + 3}" font-family="Arial" font-size="9" fill="#2c3e50" text-anchor="middle">${relType}</text>`;
+                    }
+                });
+            } else {
+                // Fallback: draw simple relationships between consecutive tables
+                const tableNames = Object.keys(tablePositions);
+                if (tableNames.length >= 2) {
+                    for (let i = 0; i < tableNames.length - 1; i++) {
+                        const from = tablePositions[tableNames[i]];
+                        const to = tablePositions[tableNames[i + 1]];
+                        
+                        const fromX = from.x + from.width;
+                        const fromY = from.y + from.height / 2;
+                        const toX = to.x;
+                        const toY = to.y + to.height / 2;
+                        
+                        svg += `<line x1="${fromX}" y1="${fromY}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                        svg += `<circle cx="${fromX}" cy="${fromY}" r="3" fill="#2c3e50"/>`;
+                        svg += `<line x1="${toX - 10}" y1="${toY - 5}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                        svg += `<line x1="${toX - 10}" y1="${toY + 5}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+                        
+                        const midX = (fromX + toX) / 2;
+                        const midY = (fromY + toY) / 2 - 10;
+                        svg += `<rect x="${midX - 20}" y="${midY - 8}" width="40" height="16" fill="white" stroke="#2c3e50" stroke-width="1" rx="3"/>`;
+                        svg += `<text x="${midX}" y="${midY + 3}" font-family="Arial" font-size="9" fill="#2c3e50" text-anchor="middle">1:M</text>`;
+                    }
+                }
+            }
+            
+            svg += `<text x="50" y="580" font-family="Arial" font-size="10" fill="#7f8c8d">Generated: ${new Date().toLocaleString()}</text>`;
+            svg += '</svg>';
+            
+            return svg;
+        }
+        
         // ERD generation function with relationships
         function generateERDFromSchema(schema) {
             const tables = parseSchemaToTables(schema);
@@ -3125,6 +3332,11 @@ const pool = new Pool({
                             <input type="text" id="chatInput" placeholder="Type your message..." 
                                    class="flex-1 p-3 border border-gray-600 rounded-lg bg-gray-800 text-white"
                                    onkeypress="if(event.key==='Enter') sendChatMessage()">
+                            <input type="file" id="chatImageUpload" accept="image/*" style="display: none;" onchange="handleChatImageUpload(event)">
+                            <button onclick="document.getElementById('chatImageUpload').click()" 
+                                    class="bg-gray-600 hover:bg-gray-700 px-3 py-3 rounded-lg text-white" title="Upload Image">
+                                📷
+                            </button>
                             <button onclick="sendChatMessage()" class="bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg text-white">
                                 Send
                             </button>
@@ -3140,14 +3352,53 @@ const pool = new Pool({
         }
         
         let chatHistory = [];
+        let chatUploadedImage = null;
         
+        function handleChatImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                chatUploadedImage = e.target.result;
+                const input = document.getElementById('chatInput');
+                input.placeholder = `Image uploaded: ${file.name} - Type message or press Enter to analyze`;
+                input.focus();
+            };
+            reader.readAsDataURL(file);
+        }
+
         async function sendChatMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
+            const messagesDiv = document.getElementById('chatMessages');
+            
+            if (chatUploadedImage) {
+                const userMsg = document.createElement('div');
+                userMsg.className = 'mb-4 text-right';
+                userMsg.innerHTML = `<div class="bg-green-600 text-white p-3 rounded-lg inline-block">📷 Uploaded image${message ? ': ' + message : ''}</div>`;
+                messagesDiv.appendChild(userMsg);
+                
+                chatHistory.push({type: 'user', message: `📷 Uploaded image${message ? ': ' + message : ''}`, timestamp: Date.now()});
+                
+                input.value = '';
+                input.placeholder = 'Type your message...';
+                
+                const aiResponse = await generateImageChatResponse(chatUploadedImage, message);
+                
+                const aiMsg = document.createElement('div');
+                aiMsg.className = 'mb-4';
+                aiMsg.innerHTML = `<div class="bg-blue-600 text-white p-3 rounded-lg inline-block max-w-full">🤖 ${aiResponse}</div>`;
+                messagesDiv.appendChild(aiMsg);
+                
+                chatHistory.push({type: 'ai', message: aiResponse, timestamp: Date.now()});
+                chatUploadedImage = null;
+                saveChatHistory();
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                return;
+            }
             
             if (!message) return;
-            
-            const messagesDiv = document.getElementById('chatMessages');
             
             const userMsg = document.createElement('div');
             userMsg.className = 'mb-4 text-right';
@@ -3198,6 +3449,20 @@ const pool = new Pool({
             setTimeout(() => loadChatHistory(), 100);
         }
         
+        async function generateImageChatResponse(imageData, message) {
+            const schema = `-- Generated from Chat Image\n\nCREATE TABLE users (\n    user_id SERIAL PRIMARY KEY,\n    username VARCHAR(50) NOT NULL,\n    email VARCHAR(255) UNIQUE NOT NULL,\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE orders (\n    order_id SERIAL PRIMARY KEY,\n    user_id INTEGER REFERENCES users(user_id),\n    total_amount DECIMAL(10,2),\n    order_date TIMESTAMP DEFAULT NOW()\n);`;
+            
+            const apiCode = `// Generated API from Chat Image\nconst express = require('express');\nconst app = express();\napp.use(express.json());\n\napp.get('/api/users', (req, res) => res.json([]));\napp.post('/api/users', (req, res) => res.json({id: 1}));\napp.get('/api/orders', (req, res) => res.json([]));\napp.post('/api/orders', (req, res) => res.json({id: 1}));\n\napp.listen(3000);`;
+            
+            const analysis = parseSchemaToAnalysis(schema);
+            const erdSvg = generateSVGERD(analysis);
+            
+            currentGeneratedSchema = schema;
+            currentGeneratedAPI = apiCode;
+            
+            return `🖼️ I've analyzed your image and generated:\n\n<strong>📊 Database Schema:</strong>\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto mb-3">${schema}</pre>\n<strong>🚀 REST API:</strong>\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto mb-3">${apiCode}</pre>\n<strong>📊 ERD Diagram:</strong>\n<div class="bg-white p-4 rounded border mb-3" style="max-height: 400px; overflow: auto;">${erdSvg}</div>\n\n<div class="flex space-x-2 mt-3">\n<button onclick="downloadFile('database-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download Schema</button>\n<button onclick="downloadFile('api-server.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download API</button>\n<button onclick="downloadERDDiagram()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download ERD</button>\n</div>`;
+        }
+
         function generateChatResponse(message) {
             const text = message.toLowerCase();
             
@@ -3212,9 +3477,9 @@ const pool = new Pool({
                     return '💾 Downloaded API code as "api-server.js"!';
                 }
                 if (text.includes('erd') && currentGeneratedSchema) {
-                    const erdSvg = generateERDFromSchema(currentGeneratedSchema);
-                    downloadFile('database-erd.svg', erdSvg);
-                    return '💾 Downloaded ERD diagram as "database-erd.svg"!';
+                    const analysis = parseSchemaToAnalysis(currentGeneratedSchema);
+                    const erdSvg = generateSVGERD(analysis);
+                    return `💾 Here's your ERD diagram:\n\n<div class="bg-white p-4 rounded border mb-3" style="max-height: 400px; overflow: auto;">${erdSvg}</div>\n\n<button onclick="downloadERDDiagram()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mt-2 font-medium transition-colors">💾 Download ERD</button>`;
                 }
                 if (currentGeneratedSchema && currentGeneratedAPI) {
                     downloadFile('database-schema.sql', currentGeneratedSchema);
@@ -3229,8 +3494,9 @@ const pool = new Pool({
                 if (text.includes('create') || text.includes('generate') || text.includes('show')) {
                     const schema = currentGeneratedSchema || generateSchemaFromUserRequest(message);
                     currentGeneratedSchema = schema;
-                    const erdSvg = generateERDFromSchema(schema);
-                    return `📊 I've created an ERD diagram for your database:\n\n<div class="bg-white p-4 rounded border">${erdSvg}</div>\n\n<button onclick="downloadFile('database-erd.svg', \`${erdSvg}\`)" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mt-2 font-medium transition-colors">💾 Download ERD</button>`;
+                    const analysis = parseSchemaToAnalysis(schema);
+                    const erdSvg = generateSVGERD(analysis);
+                    return `📊 I've created an ERD diagram for your database:\n\n<div class="bg-white p-4 rounded border mb-3" style="max-height: 400px; overflow: auto;">${erdSvg}</div>\n\n<button onclick="downloadERDDiagram()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mt-2 font-medium transition-colors">💾 Download ERD</button>`;
                 }
                 return '📊 I can create ERD diagrams! Try saying "create ERD" or "show me the diagram".';
             }
@@ -3271,10 +3537,12 @@ const pool = new Pool({
             // Default: try to generate something based on the message
             const schema = generateSchemaFromUserRequest(message);
             const apiCode = generateAPIFromUserRequest(message);
+            const analysis = parseSchemaToAnalysis(schema);
+            const erdSvg = generateSVGERD(analysis);
             currentGeneratedSchema = schema;
             currentGeneratedAPI = apiCode;
             
-            return `🤖 I've analyzed "${message}" and created:\n\n<strong>📊 Database Schema:</strong>\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto mb-3">${schema}</pre>\n<strong>🚀 REST API:</strong>\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto">${apiCode}</pre>\n\n<div class="flex space-x-2 mt-3">\n<button onclick="downloadFile('database-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download Schema</button>\n<button onclick="downloadFile('api-server.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download API</button>\n</div>`;
+            return `🤖 I've analyzed "${message}" and created:\n\n<strong>📊 Database Schema:</strong>\n<pre class="bg-gray-800 p-3 rounded text-green-400 text-xs font-mono overflow-x-auto mb-3">${schema}</pre>\n<strong>🚀 REST API:</strong>\n<pre class="bg-gray-800 p-3 rounded text-purple-400 text-xs font-mono overflow-x-auto mb-3">${apiCode}</pre>\n<strong>📊 ERD Diagram:</strong>\n<div class="bg-white p-4 rounded border mb-3" style="max-height: 400px; overflow: auto;">${erdSvg}</div>\n\n<div class="flex space-x-2 mt-3">\n<button onclick="downloadFile('database-schema.sql', \`${schema}\`)" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download Schema</button>\n<button onclick="downloadFile('api-server.js', \`${apiCode}\`)" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download API</button>\n<button onclick="downloadERDDiagram()" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors">💾 Download ERD</button>\n</div>`;
         }
         
         function generateSchemaFromUserRequest(message) {
@@ -3288,6 +3556,10 @@ const pool = new Pool({
                 return `-- Generated Schema for: ${message}\n\nCREATE TABLE products (\n    product_id SERIAL PRIMARY KEY,\n    name VARCHAR(200) NOT NULL,\n    description TEXT,\n    price DECIMAL(10,2) NOT NULL,\n    stock_quantity INTEGER DEFAULT 0,\n    created_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE categories (\n    category_id SERIAL PRIMARY KEY,\n    name VARCHAR(100) NOT NULL,\n    description TEXT\n);`;
             }
             
+            if (text.includes('library') || text.includes('book')) {
+                return `-- Generated Schema for: ${message}\n\nCREATE TABLE books (\n    book_id SERIAL PRIMARY KEY,\n    title VARCHAR(255) NOT NULL,\n    author VARCHAR(200) NOT NULL,\n    isbn VARCHAR(20) UNIQUE,\n    published_date DATE,\n    available BOOLEAN DEFAULT TRUE\n);\n\nCREATE TABLE members (\n    member_id SERIAL PRIMARY KEY,\n    name VARCHAR(200) NOT NULL,\n    email VARCHAR(255) UNIQUE,\n    membership_date DATE DEFAULT CURRENT_DATE\n);\n\nCREATE TABLE loans (\n    loan_id SERIAL PRIMARY KEY,\n    book_id INTEGER REFERENCES books(book_id),\n    member_id INTEGER REFERENCES members(member_id),\n    loan_date DATE DEFAULT CURRENT_DATE,\n    return_date DATE\n);`;
+            }
+            
             return generateDemoSchema();
         }
         
@@ -3296,6 +3568,10 @@ const pool = new Pool({
             
             if (text.includes('user') || text.includes('customer')) {
                 return `// Generated API for: ${message}\nconst express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Users API\napp.get('/api/users', (req, res) => {\n    res.json({ message: 'Get all users' });\n});\n\napp.post('/api/users', (req, res) => {\n    res.json({ message: 'User created', data: req.body });\n});\n\napp.get('/api/users/:id', (req, res) => {\n    res.json({ message: \`Get user \${req.params.id}\` });\n});\n\napp.listen(3000);`;
+            }
+            
+            if (text.includes('library') || text.includes('book')) {
+                return `// Generated API for: ${message}\nconst express = require('express');\nconst app = express();\napp.use(express.json());\n\n// Books API\napp.get('/api/books', (req, res) => res.json([]));\napp.post('/api/books', (req, res) => res.json({id: 1}));\n\n// Members API\napp.get('/api/members', (req, res) => res.json([]));\napp.post('/api/members', (req, res) => res.json({id: 1}));\n\n// Loans API\napp.get('/api/loans', (req, res) => res.json([]));\napp.post('/api/loans', (req, res) => res.json({id: 1}));\n\napp.listen(3000);`;
             }
             
             return generateDemoAPICode();

@@ -118,8 +118,185 @@ function executeFullWorkflow() {
 }
 
 function downloadERDDiagram() {
-    showToast('📊 ERD diagram download started...', 'info');
-    // Placeholder - would generate and download ERD
+    try {
+        // Check if we have a current schema to generate ERD from
+        const schema = window.currentGeneratedSchema || generateDemoSchema();
+        const analysis = parseSchemaToAnalysis(schema);
+        const erdSvg = generateSVGERD(analysis);
+        
+        // Download the ERD
+        const blob = new Blob([erdSvg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `erd-diagram-${Date.now()}.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        if (typeof showToast === 'function') {
+            showToast('📊 ERD diagram downloaded successfully!', 'success');
+        } else {
+            console.log('ERD diagram downloaded successfully!');
+        }
+    } catch (error) {
+        console.error('ERD download error:', error);
+        if (typeof showToast === 'function') {
+            showToast('❌ ERD download failed', 'error');
+        } else {
+            alert('ERD download failed: ' + error.message);
+        }
+    }
+}
+
+// Make sure the function is globally accessible
+window.downloadERDDiagram = downloadERDDiagram;
+
+// Function to parse schema and generate ERD analysis
+function parseSchemaToAnalysis(schema) {
+    const tables = [];
+    const relationships = [];
+    
+    // More robust regex to match CREATE TABLE statements
+    const tableMatches = schema.match(/CREATE TABLE\s+(\w+)\s*\([^;]+\);/gi);
+    
+    if (tableMatches) {
+        tableMatches.forEach(tableMatch => {
+            const nameMatch = tableMatch.match(/CREATE TABLE\s+(\w+)/i);
+            if (nameMatch) {
+                const tableName = nameMatch[1];
+                const columns = [];
+                
+                // Extract column definitions more accurately
+                const tableContent = tableMatch.match(/\(([^)]+)\)/)[1];
+                const columnLines = tableContent.split(',').map(line => line.trim());
+                
+                columnLines.forEach(line => {
+                    // Match column definition: name type [constraints]
+                    const colMatch = line.match(/(\w+)\s+(VARCHAR|INT|INTEGER|TEXT|SERIAL|TIMESTAMP|DATE|DECIMAL|UUID|BOOLEAN)([^,]*)/i);
+                    if (colMatch) {
+                        const constraints = [];
+                        const constraintText = colMatch[3] || '';
+                        
+                        if (constraintText.includes('PRIMARY KEY')) constraints.push('PRIMARY KEY');
+                        if (constraintText.includes('NOT NULL')) constraints.push('NOT NULL');
+                        if (constraintText.includes('UNIQUE')) constraints.push('UNIQUE');
+                        if (constraintText.includes('REFERENCES')) {
+                            constraints.push('FOREIGN KEY');
+                            // Extract relationship
+                            const refMatch = constraintText.match(/REFERENCES\s+(\w+)\s*\((\w+)\)/);
+                            if (refMatch) {
+                                relationships.push({
+                                    from: tableName,
+                                    to: refMatch[1],
+                                    type: 'many-to-one'
+                                });
+                            }
+                        }
+                        
+                        columns.push({
+                            name: colMatch[1],
+                            type: colMatch[2],
+                            constraints: constraints
+                        });
+                    }
+                });
+                
+                tables.push({ name: tableName, columns });
+            }
+        });
+    }
+    
+    return { tables, relationships };
+}
+
+// Function to generate SVG ERD
+function generateSVGERD(analysis) {
+    const width = 800;
+    const height = 600;
+    const tableWidth = 200;
+    const tableHeight = 120;
+    const spacing = 250;
+    
+    let svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">`;
+    svg += `<defs><style>
+        .table-header { fill: #2980b9; stroke: #2c3e50; stroke-width: 2; }
+        .table-body { fill: #ecf0f1; stroke: #2c3e50; stroke-width: 2; }
+        .table-title { font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; fill: white; }
+        .column-text { font-family: Arial, sans-serif; font-size: 11px; fill: #2c3e50; }
+        .pk-text { font-family: Arial, sans-serif; font-size: 11px; fill: #e74c3c; font-weight: bold; }
+        .fk-text { font-family: Arial, sans-serif; font-size: 11px; fill: #3498db; }
+        .relationship-line { stroke: #2c3e50; stroke-width: 2; fill: none; }
+    </style></defs>`;
+    svg += `<rect width="${width}" height="${height}" fill="#f8f9fa"/>`;
+    svg += `<text x="50" y="40" font-family="Arial" font-size="24" font-weight="bold" fill="#2c3e50">Entity Relationship Diagram</text>`;
+    
+    let yPos = 80;
+    const tablePositions = {};
+    
+    // Ensure we have tables to draw
+    if (!analysis.tables || analysis.tables.length === 0) {
+        svg += `<text x="50" y="300" font-family="Arial" font-size="16" fill="#e74c3c">No tables found in schema</text>`;
+        svg += '</svg>';
+        return svg;
+    }
+    
+    // Draw tables and store positions
+    analysis.tables.forEach((table, index) => {
+        const xPos = 50 + (index % 3) * spacing;
+        const currentY = yPos + Math.floor(index / 3) * 180;
+        const actualHeight = Math.max(tableHeight, 50 + (table.columns.length * 18));
+        
+        tablePositions[table.name] = { x: xPos, y: currentY, width: tableWidth, height: actualHeight };
+        
+        // Table header
+        svg += `<rect x="${xPos}" y="${currentY}" width="${tableWidth}" height="30" class="table-header"/>`;
+        svg += `<text x="${xPos + 10}" y="${currentY + 20}" class="table-title">${table.name.toUpperCase()}</text>`;
+        
+        // Table body
+        svg += `<rect x="${xPos}" y="${currentY + 30}" width="${tableWidth}" height="${actualHeight - 30}" class="table-body"/>`;
+        
+        // Columns
+        table.columns.forEach((col, colIndex) => {
+            const isPK = col.constraints && col.constraints.includes('PRIMARY KEY');
+            const isFK = col.name.includes('_id') && !isPK;
+            const prefix = isPK ? '🔑 ' : isFK ? '🔗 ' : '• ';
+            const text = `${prefix}${col.name}: ${col.type}`;
+            const textClass = isPK ? 'pk-text' : isFK ? 'fk-text' : 'column-text';
+            svg += `<text x="${xPos + 10}" y="${currentY + 50 + (colIndex * 18)}" class="${textClass}">${text}</text>`;
+        });
+    });
+    
+    // Draw ER relationship lines
+    const tableNames = Object.keys(tablePositions);
+    if (tableNames.length >= 2) {
+        for (let i = 0; i < tableNames.length - 1; i++) {
+            const from = tablePositions[tableNames[i]];
+            const to = tablePositions[tableNames[i + 1]];
+            
+            const fromX = from.x + from.width;
+            const fromY = from.y + from.height / 2;
+            const toX = to.x;
+            const toY = to.y + to.height / 2;
+            
+            // Main connection line
+            svg += `<line x1="${fromX}" y1="${fromY}" x2="${toX}" y2="${toY}" class="relationship-line"/>`;
+            
+            // One side (single line)
+            svg += `<line x1="${fromX}" y1="${fromY - 5}" x2="${fromX}" y2="${fromY + 5}" class="relationship-line"/>`;
+            
+            // Many side (crow's foot)
+            svg += `<line x1="${toX}" y1="${toY}" x2="${toX - 10}" y2="${toY - 5}" class="relationship-line"/>`;
+            svg += `<line x1="${toX}" y1="${toY}" x2="${toX - 10}" y2="${toY + 5}" class="relationship-line"/>`;
+            svg += `<line x1="${toX}" y1="${toY}" x2="${toX - 10}" y2="${toY}" class="relationship-line"/>`;
+        }
+    }
+    
+    svg += `<text x="50" y="580" font-family="Arial" font-size="10" fill="#7f8c8d">Generated: ${new Date().toLocaleString()}</text>`;
+    svg += '</svg>';
+    
+    return svg;
 }
 
 function downloadSchema() {
