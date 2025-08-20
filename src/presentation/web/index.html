@@ -3572,27 +3572,79 @@ const pool = new Pool({
             `;
             document.body.appendChild(designInterface);
         }
-        
-        function sendDesignMessage() {
-            const input = document.getElementById('designInput');
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            const messagesDiv = document.getElementById('designMessages');
-            messagesDiv.innerHTML += `<div class="text-green-400 mb-2">You: ${message}</div>`;
-            
-            input.value = '';
-            
-            setTimeout(() => {
-                messagesDiv.innerHTML += `<div class="text-blue-400 mb-2">🤖 AI: Great! I'll add that to your schema...</div>`;
-                
-                const schemaDiv = document.getElementById('liveSchema');
-                schemaDiv.innerHTML += `\nCREATE TABLE ${message.toLowerCase().replace(/\s+/g, '_')} (\n    id SERIAL PRIMARY KEY\n);\n`;
-                
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }, 1000);
+        function guessType(columnName) {
+        columnName = columnName.toLowerCase();
+        if (columnName.includes("id")) return "SERIAL";
+        if (columnName.includes("date")) return "DATE";
+        if (columnName.includes("email")) return "VARCHAR(255)";
+        if (columnName.includes("phone")) return "VARCHAR(20)";
+        return "VARCHAR(255)";
+    }
+
+   function sendDesignMessage() {
+    const input = document.getElementById('designInput');
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    const messagesDiv = document.getElementById('designMessages');
+    messagesDiv.innerHTML += `<div class="text-green-400 mb-2">You: ${message}</div>`;
+
+    input.value = '';
+
+    setTimeout(() => {
+        // Add AI response in chat
+        messagesDiv.innerHTML += `<div class="text-blue-400 mb-2">🤖 AI: Great! I'll add that to your schema...</div>`;
+
+        // Grab schema div
+        const schemaDiv = document.getElementById('liveSchema');
+
+        // Split the input into lines
+        const lines = message.split(/\n|-/).map(l => l.trim()).filter(l => l);
+
+        // First line should contain table name (e.g. "Add entity: teacher")
+        let tableName = "unknown_table";
+        if (lines[0].toLowerCase().includes("entity")) {
+            tableName = lines[0].split(":")[1]?.trim() || "unknown_table";
         }
+
+        // Start building SQL
+        let sql = `CREATE TABLE ${tableName} (\n`;
+
+        // Loop through the rest of lines to make columns
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Extract column name before dash
+            const parts = line.split("–").map(p => p.trim());
+            const colDef = parts[0];
+
+            let colName = colDef.split(" ")[0]; // e.g. teacher_id
+            let colType = "VARCHAR(255)";
+
+            if (colName.toLowerCase().includes("id")) colType = "SERIAL PRIMARY KEY";
+            else if (colName.toLowerCase().includes("date")) colType = "DATE";
+            else if (colName.toLowerCase().includes("phone")) colType = "VARCHAR(20)";
+            else if (colName.toLowerCase().includes("email")) colType = "VARCHAR(255)";
+            else if (colName.toLowerCase().includes("address")) colType = "TEXT";
+
+            sql += `    ${colName} ${colType},\n`;
+        }
+
+        // Remove last comma and close
+        sql = sql.replace(/,\n$/, "\n");
+        sql += `);\n`;
+
+        // Append schema
+        schemaDiv.innerHTML += sql;
+
+        // Scroll chat
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }, 1000);
+}
+
+
+    
         
         function closeDesignChat() {
             const designInterface = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50');
