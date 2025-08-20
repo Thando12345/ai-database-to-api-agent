@@ -9,8 +9,19 @@ function downloadERDDiagram() {
         const erdSvg = generateSVGERD(analysis);
         downloadSVG(erdSvg);
     } else {
-        showToast('❌ No schema available', 'error');
+        // Generate a demo ERD if no schema exists
+        const demoSchema = generateDemoSchema();
+        const analysis = parseSchemaToAnalysis(demoSchema);
+        const erdSvg = generateSVGERD(analysis);
+        downloadSVG(erdSvg);
+        showToast('📊 Demo ERD downloaded', 'success');
     }
+}
+
+// Function to generate ERD from schema and return as downloadable content
+function generateERDFromSchema(schema) {
+    const analysis = parseSchemaToAnalysis(schema);
+    return generateSVGERD(analysis);
 }
 
 function generateSVGERD(analysis) {
@@ -83,7 +94,9 @@ function downloadSVG(svgContent) {
     const link = document.createElement('a');
     link.href = url;
     link.download = `erd-diagram-${Date.now()}.svg`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
     showToast('💾 ERD downloaded!', 'success');
 }
