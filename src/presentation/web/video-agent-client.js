@@ -7,10 +7,15 @@ class VideoAgentClient {
         this.isRecording = false;
         this.recognition = null;
         this.synthesis = window.speechSynthesis;
+        this.conversationData = [];
     }
 
     async startDirectVideoCall() {
         try {
+            // Clear previous conversation data
+            this.conversationData = [];
+            this.currentSchema = null;
+            
             // Get video stream
             this.localStream = await navigator.mediaDevices.getUserMedia({ 
                 video: true, 
@@ -80,23 +85,6 @@ class VideoAgentClient {
                     </div>
                     
                     <div id="agentStatus" class="text-center text-green-400 text-sm mb-2">Ready to help with your database needs</div>
-                    
-                    <!-- Export Panel -->
-                    <div class="bg-gray-700/50 rounded p-2 mb-3">
-                        <div class="text-center text-gray-300 text-xs mb-2">📤 Export Options</div>
-                        <div class="grid grid-cols-3 gap-1">
-                            <button onclick="videoAgent.exportMarkdown()" id="exportMdBtn" class="bg-blue-500/80 hover:bg-blue-600 text-white px-2 py-1 rounded text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                📄 MD
-                            </button>
-                            <button onclick="videoAgent.exportAPI()" id="exportApiBtn" class="bg-purple-500/80 hover:bg-purple-600 text-white px-2 py-1 rounded text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                🚀 API
-                            </button>
-                            <button onclick="videoAgent.exportERD()" id="exportErdBtn" class="bg-green-500/80 hover:bg-green-600 text-white px-2 py-1 rounded text-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                📊 ERD
-                            </button>
-                        </div>
-                        <div id="schemaStatus" class="text-center text-xs text-gray-400 mt-1">Ask me to create a schema first</div>
-                    </div>
                     
                     <!-- Chat Panel (hidden by default) -->
                     <div id="chatPanel" class="hidden bg-gray-800 rounded p-3 transition-all duration-300">
@@ -192,8 +180,23 @@ class VideoAgentClient {
             
             this.recognition.onresult = (event) => {
                 const transcript = event.results[event.results.length - 1][0].transcript;
+                
+                // Show chat panel if hidden
+                const chatPanel = document.getElementById('chatPanel');
+                if (chatPanel && chatPanel.classList.contains('hidden')) {
+                    this.toggleChat();
+                }
+                
                 this.addMessage('You', transcript, 'text-blue-400');
                 this.processUserInput(transcript);
+                
+                // Auto-stop recording after getting result
+                this.isRecording = false;
+                const micBtn = document.getElementById('micBtn');
+                if (micBtn) {
+                    micBtn.className = 'bg-green-600 hover:bg-green-500 p-3 rounded-full text-white';
+                    micBtn.textContent = '🎤';
+                }
             };
             
             this.recognition.onerror = () => {
@@ -204,6 +207,10 @@ class VideoAgentClient {
 
     toggleMic() {
         if (!this.recognition) {
+            this.initializeSpeechRecognition();
+        }
+        
+        if (!this.recognition) {
             this.showStatus('Speech recognition not supported', 'error');
             return;
         }
@@ -213,13 +220,13 @@ class VideoAgentClient {
         if (this.isRecording) {
             this.recognition.stop();
             this.isRecording = false;
-            micBtn.className = 'bg-green-600/80 hover:bg-green-600 text-white px-2 py-1 rounded text-xs';
+            micBtn.className = 'bg-green-600 hover:bg-green-500 p-3 rounded-full text-white';
             micBtn.textContent = '🎤';
             this.updateAgentStatus('Ready to help');
         } else {
             this.recognition.start();
             this.isRecording = true;
-            micBtn.className = 'bg-red-600/80 hover:bg-red-600 text-white px-2 py-1 rounded text-xs';
+            micBtn.className = 'bg-red-600 hover:bg-red-500 p-3 rounded-full text-white';
             micBtn.textContent = '🔴';
             this.updateAgentStatus('Listening...');
         }
@@ -240,9 +247,6 @@ class VideoAgentClient {
         this.updateAgentStatus('Thinking...');
         this.animateAISpeaking();
         
-        // Always enable export after any user input
-        const lowerText = text.toLowerCase();
-        
         try {
             // Use RAG-powered AI response
             const response = await fetch('/api/agent/text-input', {
@@ -260,21 +264,35 @@ class VideoAgentClient {
                 this.addMessage('AI Agent', result.response, 'text-green-400');
                 this.speakMessage(result.response);
                 
-                // Always generate schema and enable export
-                this.currentSchema = this.generateSchemaFromText(text);
+                // Store conversation data
+                this.conversationData.push({
+                    user: text,
+                    ai: result.response,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Extract schema from AI response and store
+                this.currentSchema = this.extractSchemaFromAIResponse(result.response, text);
                 this.enableExportButtons();
             } else {
                 throw new Error('RAG failed');
             }
             
         } catch (error) {
-            // Fallback to local response
-            const fallbackResponse = this.generateIntelligentResponse(text);
-            this.addMessage('AI Agent', fallbackResponse, 'text-green-400');
-            this.speakMessage(fallbackResponse);
+            // Fallback to intelligent response
+            const intelligentResponse = this.generateIntelligentResponse(text);
+            this.addMessage('AI Agent', intelligentResponse, 'text-green-400');
+            this.speakMessage(intelligentResponse);
             
-            // Always enable export on fallback too
-            this.currentSchema = this.generateSchemaFromText(text);
+            // Store conversation data
+            this.conversationData.push({
+                user: text,
+                ai: intelligentResponse,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Generate schema and enable export
+            this.currentSchema = this.generateIntelligentSchema(text);
             this.enableExportButtons();
         }
         
@@ -284,69 +302,200 @@ class VideoAgentClient {
     generateIntelligentResponse(text) {
         const lowerText = text.toLowerCase();
         
+        if (lowerText.includes('suitcase') || lowerText.includes('luggage')) {
+            return "Perfect for a suitcase shop! I've designed a specialized luggage e-commerce system with products table including size, material, brand, weight, and dimensions. Plus customers and orders tables for complete shop management. This handles carry-on, checked luggage, hard shell, soft shell materials.";
+        }
+        
         if (lowerText.includes('hospital') || lowerText.includes('medical')) {
-            this.currentSchema = this.generateHospitalSchema();
-            this.enableExportButtons();
-            return "Perfect! I've created a hospital database with patients, doctors, appointments, medical_records, and departments. This includes patient management, appointment scheduling, and medical history tracking. Export buttons are now active!";
+            return "Perfect! I've created a hospital database with patients, doctors, appointments, medical_records, and departments. This includes patient management, appointment scheduling, and medical history tracking with HIPAA compliance.";
         }
         
         if (lowerText.includes('school') || lowerText.includes('university') || lowerText.includes('student')) {
-            this.currentSchema = this.generateSchoolSchema();
-            this.enableExportButtons();
-            return "Excellent! I've designed a comprehensive school database with students, teachers, courses, enrollments, grades, and classrooms. This handles student registration, course management, and academic tracking. Ready to export!";
+            return "Excellent! I've designed a comprehensive school database with students, teachers, courses, enrollments, grades, and classrooms. This handles student registration, course management, and academic tracking.";
         }
         
-        if (lowerText.includes('ecommerce') || lowerText.includes('shop') || lowerText.includes('store')) {
-            this.currentSchema = this.generateEcommerceSchema();
-            this.enableExportButtons();
-            return "Great! I've built an e-commerce platform with customers, products, orders, payments, categories, and reviews. This includes shopping cart functionality and order management. Export options are ready!";
+        if (lowerText.includes('restaurant') || lowerText.includes('food')) {
+            return "Great for restaurant management! I've created tables for menu_items, customers, orders, staff, and tables. This includes menu management, order processing, table reservations, and inventory tracking.";
         }
         
         if (lowerText.includes('library') || lowerText.includes('book')) {
-            this.currentSchema = this.generateLibrarySchema();
-            this.enableExportButtons();
-            return "Nice! I've created a library system with books, members, borrowings, authors, categories, and reservations. This handles book lending, member management, and inventory tracking. Ready for export!";
+            return "Nice! I've created a library system with books, members, borrowings, authors, categories, and reservations. This handles book lending, member management, and inventory tracking.";
         }
         
         if (lowerText.includes('blog') || lowerText.includes('cms')) {
-            this.currentSchema = this.generateBlogSchema();
-            this.enableExportButtons();
-            return "Perfect! I've designed a blog/CMS with users, posts, comments, categories, tags, and media. This includes content management and user interaction features. Export ready!";
+            return "Perfect! I've designed a blog/CMS with users, posts, comments, categories, tags, and media. This includes content management and user interaction features.";
         }
         
-        this.currentSchema = this.generateGenericSchema(text);
-        this.enableExportButtons();
-        return `I understand you want "${text}". I've created a custom database schema with all necessary tables, relationships, and constraints for your specific needs. Use the export buttons to download!`;
+        if (lowerText.includes('ecommerce') || lowerText.includes('shop') || lowerText.includes('store')) {
+            return "Great! I've built an e-commerce platform with customers, products, orders, payments, categories, and reviews. This includes shopping cart functionality and order management.";
+        }
+        
+        return `I understand you want "${text}". I've created a custom database schema with all necessary tables, relationships, and constraints for your specific needs. The system is optimized for your requirements!`;
     }
 
-    generateFallbackResponse(text) {
+    generateIntelligentSchema(text) {
         const lowerText = text.toLowerCase();
         
+        if (lowerText.includes('suitcase') || lowerText.includes('luggage')) {
+            return {
+                name: 'Suitcase Shop System',
+                tables: [
+                    {
+                        name: 'products',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'name', type: 'VARCHAR(200) NOT NULL' },
+                            { name: 'brand', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'type', type: 'VARCHAR(50) NOT NULL' },
+                            { name: 'size', type: 'VARCHAR(50) NOT NULL' },
+                            { name: 'material', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'color', type: 'VARCHAR(50)' },
+                            { name: 'price', type: 'DECIMAL(10,2) NOT NULL' },
+                            { name: 'stock_quantity', type: 'INTEGER DEFAULT 0' },
+                            { name: 'weight', type: 'DECIMAL(5,2)' },
+                            { name: 'dimensions', type: 'VARCHAR(100)' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    },
+                    {
+                        name: 'customers',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'email', type: 'VARCHAR(255) UNIQUE NOT NULL' },
+                            { name: 'first_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'last_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'phone', type: 'VARCHAR(20)' },
+                            { name: 'shipping_address', type: 'TEXT' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    },
+                    {
+                        name: 'orders',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'customer_id', type: 'INTEGER REFERENCES customers(id)' },
+                            { name: 'total_amount', type: 'DECIMAL(10,2) NOT NULL' },
+                            { name: 'status', type: 'VARCHAR(20) DEFAULT \'pending\'' },
+                            { name: 'shipping_method', type: 'VARCHAR(50)' },
+                            { name: 'tracking_number', type: 'VARCHAR(100)' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    }
+                ]
+            };
+        }
+        
         if (lowerText.includes('hospital') || lowerText.includes('medical')) {
-            return "Perfect! I'll create a hospital database schema with patients, doctors, appointments, and medical records. Let me generate that for you right now!";
+            return {
+                name: 'Hospital Management System',
+                tables: [
+                    {
+                        name: 'patients',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'first_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'last_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'date_of_birth', type: 'DATE NOT NULL' },
+                            { name: 'phone', type: 'VARCHAR(20)' },
+                            { name: 'email', type: 'VARCHAR(255)' },
+                            { name: 'medical_record_number', type: 'VARCHAR(50) UNIQUE' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    },
+                    {
+                        name: 'doctors',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'first_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'last_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'specialization', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'license_number', type: 'VARCHAR(50) UNIQUE' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    },
+                    {
+                        name: 'appointments',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'patient_id', type: 'INTEGER REFERENCES patients(id)' },
+                            { name: 'doctor_id', type: 'INTEGER REFERENCES doctors(id)' },
+                            { name: 'appointment_date', type: 'TIMESTAMP NOT NULL' },
+                            { name: 'status', type: 'VARCHAR(20) DEFAULT \'scheduled\'' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    }
+                ]
+            };
         }
         
-        if (lowerText.includes('school') || lowerText.includes('university') || lowerText.includes('student')) {
-            return "Excellent! I'll design a school database with students, courses, teachers, and enrollments. Creating the schema now!";
+        if (lowerText.includes('school') || lowerText.includes('student')) {
+            return {
+                name: 'School Management System',
+                tables: [
+                    {
+                        name: 'students',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'student_id', type: 'VARCHAR(20) UNIQUE NOT NULL' },
+                            { name: 'first_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'last_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'email', type: 'VARCHAR(255) UNIQUE' },
+                            { name: 'grade_level', type: 'INTEGER NOT NULL' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    },
+                    {
+                        name: 'teachers',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'employee_id', type: 'VARCHAR(20) UNIQUE NOT NULL' },
+                            { name: 'first_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'last_name', type: 'VARCHAR(100) NOT NULL' },
+                            { name: 'subject', type: 'VARCHAR(100)' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    },
+                    {
+                        name: 'courses',
+                        columns: [
+                            { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                            { name: 'course_code', type: 'VARCHAR(20) UNIQUE NOT NULL' },
+                            { name: 'course_name', type: 'VARCHAR(200) NOT NULL' },
+                            { name: 'teacher_id', type: 'INTEGER REFERENCES teachers(id)' },
+                            { name: 'credits', type: 'INTEGER DEFAULT 3' },
+                            { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                        ]
+                    }
+                ]
+            };
         }
         
-        if (lowerText.includes('ecommerce') || lowerText.includes('shop') || lowerText.includes('store')) {
-            return "Great choice! I'll build an e-commerce database with customers, products, orders, and payments. Generating now!";
-        }
-        
-        if (lowerText.includes('library') || lowerText.includes('book')) {
-            return "Nice! I'll create a library management system with books, members, and borrowing records. Setting it up!";
-        }
-        
-        if (lowerText.includes('blog') || lowerText.includes('cms')) {
-            return "Perfect! I'll design a blog/CMS database with users, posts, comments, and categories. Building it now!";
-        }
-        
-        if (lowerText.includes('inventory') || lowerText.includes('warehouse')) {
-            return "Excellent! I'll create an inventory management system with products, suppliers, and stock tracking. Generating!";
-        }
-        
-        return `I understand you want to work with "${text}". I'll create a custom database schema for that domain. Let me design the perfect structure for you!`;
+        // Default schema for other cases
+        return {
+            name: 'Custom Management System',
+            tables: [
+                {
+                    name: 'items',
+                    columns: [
+                        { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                        { name: 'name', type: 'VARCHAR(255) NOT NULL' },
+                        { name: 'description', type: 'TEXT' },
+                        { name: 'category', type: 'VARCHAR(100)' },
+                        { name: 'status', type: 'VARCHAR(50) DEFAULT \'active\'' },
+                        { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                    ]
+                },
+                {
+                    name: 'users',
+                    columns: [
+                        { name: 'id', type: 'SERIAL PRIMARY KEY' },
+                        { name: 'username', type: 'VARCHAR(100) UNIQUE NOT NULL' },
+                        { name: 'email', type: 'VARCHAR(255) UNIQUE NOT NULL' },
+                        { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' }
+                    ]
+                }
+            ]
+        };
     }
 
     speakMessage(text) {
@@ -418,6 +567,9 @@ class VideoAgentClient {
             this.localStream.getTracks().forEach(track => track.stop());
         }
         
+        // Populate Generated Solutions with session data
+        this.populateGeneratedSolutions();
+        
         // Remove UI
         const videoUI = document.getElementById('videoAgentCall');
         if (videoUI) videoUI.remove();
@@ -427,7 +579,12 @@ class VideoAgentClient {
             fetch(`/api/agent/end-session/${this.agentSession}`, { method: 'POST' });
         }
         
-        this.showStatus('📹 Video call with AI Agent ended', 'info');
+        // Update main UI status to Disconnected
+        if (typeof window.updateMainCallStatus === 'function') {
+            window.updateMainCallStatus('Disconnected');
+        }
+        
+        this.showStatus('📹 Video call ended - Solutions generated', 'success');
         this.cleanup();
     }
 
@@ -481,148 +638,210 @@ class VideoAgentClient {
         }
     }
     
-    // Export Functions
-    exportMarkdown() {
-        if (!this.currentSchema) {
-            this.showStatus('No schema available. Ask me to create one first!', 'error');
-            return;
+    populateGeneratedSolutions() {
+        // Show the solutions section
+        const solutionsSection = document.getElementById('solutionsSection');
+        if (solutionsSection) {
+            solutionsSection.classList.remove('hidden');
         }
         
-        const markdown = this.generateMarkdown(this.currentSchema);
-        this.downloadFile('database-schema.md', markdown);
-        this.showStatus('📄 Markdown exported successfully!', 'success');
-    }
-    
-    exportAPI() {
-        if (!this.currentSchema) {
-            this.showStatus('No schema available. Ask me to create one first!', 'error');
-            return;
+        // Use stored conversation data to generate accurate solutions
+        const allAIResponses = this.conversationData.map(item => item.ai).join(' ');
+        const allUserInputs = this.conversationData.map(item => item.user).join(' ');
+        
+        // Extract and generate schema from actual conversation
+        const schema = this.generateSchemaFromConversation(allAIResponses, allUserInputs);
+        
+        if (schema && schema.tables.length > 0) {
+            const sqlSchema = this.generateSQLFromSchema(schema);
+            const apiCode = this.generateAPIFromSchema(schema);
+            
+            // Populate with conversation-based content
+            const sqlElement = document.getElementById('sqlSchema');
+            if (sqlElement) {
+                sqlElement.textContent = sqlSchema;
+            }
+            
+            const apiElement = document.getElementById('apiCode');
+            if (apiElement) {
+                apiElement.textContent = apiCode;
+            }
         }
-        
-        const apiCode = this.generateAPICode(this.currentSchema);
-        this.downloadFile('api-server.js', apiCode);
-        this.showStatus('🚀 API code exported successfully!', 'success');
     }
     
-    exportERD() {
-        if (!this.currentSchema) {
-            this.showStatus('No schema available. Ask me to create one first!', 'error');
-            return;
-        }
-        
-        const erdSvg = this.generateERDSvg(this.currentSchema);
-        this.downloadFile('database-erd.svg', erdSvg);
-        this.showStatus('📊 ERD diagram exported successfully!', 'success');
-    }
-    
-    downloadFile(filename, content) {
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-    
-
-    
-    generateMarkdown(schema) {
-        let md = `# ${schema.name}\n\n`;
-        md += `Generated: ${new Date().toLocaleString()}\n\n`;
-        
-        if (schema.description) {
-            md += `## Description\n${schema.description}\n\n`;
-        }
-        
-        md += `## Database Tables\n\n`;
+    generateSQLFromSchema(schema) {
+        let sql = '';
         
         schema.tables.forEach(table => {
-            md += `### ${table.name}\n\n`;
-            md += `| Column | Type |\n`;
-            md += `|--------|------|\n`;
-            
-            table.columns.forEach(col => {
-                md += `| ${col.name} | ${col.type} |\n`;
+            sql += `CREATE TABLE ${table.name} (\n`;
+            table.columns.forEach((col, index) => {
+                sql += `    ${col.name} ${col.type}`;
+                if (index < table.columns.length - 1) sql += ',';
+                sql += '\n';
             });
-            
-            md += `\n`;
+            sql += ');\n\n';
         });
         
-        return md;
+        return sql;
     }
     
-    generateAPICode(schema) {
-        let code = `// ${schema.name} - Generated API\n`;
-        code += `const express = require('express');\n`;
-        code += `const { Pool } = require('pg');\n`;
-        code += `const app = express();\n\n`;
-        code += `app.use(express.json());\n\n`;
-        code += `const pool = new Pool({\n`;
-        code += `    connectionString: process.env.DATABASE_URL\n`;
-        code += `});\n\n`;
+    generateAPIFromSchema(schema) {
+        let api = `const express = require('express');\nconst { Pool } = require('pg');\nconst app = express();\n\napp.use(express.json());\n\nconst pool = new Pool({\n    connectionString: process.env.DATABASE_URL\n});\n\n`;
         
         schema.tables.forEach(table => {
             const tableName = table.name;
-            code += `// ${tableName} endpoints\n`;
-            code += `app.get('/api/${tableName}', async (req, res) => {\n`;
-            code += `    const result = await pool.query('SELECT * FROM ${tableName}');\n`;
-            code += `    res.json(result.rows);\n`;
-            code += `});\n\n`;
+            api += `// ${tableName} endpoints\n`;
+            api += `app.get('/api/${tableName}', async (req, res) => {\n`;
+            api += `    const result = await pool.query('SELECT * FROM ${tableName}');\n`;
+            api += `    res.json(result.rows);\n`;
+            api += `});\n\n`;
             
-            code += `app.post('/api/${tableName}', async (req, res) => {\n`;
-            code += `    // Insert logic here\n`;
-            code += `    res.json({ message: '${tableName.slice(0, -1)} created' });\n`;
-            code += `});\n\n`;
+            api += `app.post('/api/${tableName}', async (req, res) => {\n`;
+            api += `    // Insert new ${tableName.slice(0, -1)}\n`;
+            api += `    res.json({ message: '${tableName.slice(0, -1)} created successfully' });\n`;
+            api += `});\n\n`;
         });
         
-        code += `app.listen(3000, () => console.log('API running on port 3000'));\n`;
-        return code;
+        api += `app.listen(3000, () => {\n    console.log('API server running on port 3000');\n});`;
+        return api;
     }
     
-    generateERDSvg(schema) {
-        let svg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">\n`;
-        svg += `<style>\n`;
-        svg += `.table { fill: #f0f9ff; stroke: #0369a1; stroke-width: 2; }\n`;
-        svg += `.table-title { fill: #0369a1; font-family: Arial; font-size: 14px; font-weight: bold; }\n`;
-        svg += `.table-field { fill: #374151; font-family: Arial; font-size: 12px; }\n`;
-        svg += `</style>\n`;
+    extractSchemaFromAIResponse(aiResponse, originalText) {
+        // Extract entities mentioned in AI response
+        const entities = this.extractEntitiesFromResponse(aiResponse);
         
-        svg += `<text x="400" y="30" text-anchor="middle" class="table-title" font-size="18">${schema.name}</text>\n`;
+        if (entities.length > 0) {
+            return this.buildSchemaFromEntities(entities, originalText);
+        }
         
-        schema.tables.forEach((table, index) => {
-            const x = 50 + (index % 3) * 250;
-            const y = 80 + Math.floor(index / 3) * 180;
-            const height = 40 + (table.columns.length * 20);
-            
-            svg += `<rect class="table" x="${x}" y="${y}" width="200" height="${height}" rx="5"/>\n`;
-            svg += `<text class="table-title" x="${x + 10}" y="${y + 20}">${table.name}</text>\n`;
-            svg += `<line x1="${x}" y1="${y + 25}" x2="${x + 200}" y2="${y + 25}" stroke="#0369a1"/>\n`;
-            
-            table.columns.forEach((col, colIndex) => {
-                const fieldY = y + 45 + (colIndex * 20);
-                svg += `<text class="table-field" x="${x + 10}" y="${fieldY}">${col.name}: ${col.type.split(' ')[0]}</text>\n`;
-            });
+        // Fallback to intelligent schema generation
+        return this.generateIntelligentSchema(originalText);
+    }
+    
+    extractEntitiesFromResponse(response) {
+        const entities = [];
+        const lowerResponse = response.toLowerCase();
+        
+        // Common database entities patterns
+        const entityPatterns = [
+            /\b(projects?)\b/g,
+            /\b(clients?)\b/g,
+            /\b(contractors?)\b/g,
+            /\b(materials?)\b/g,
+            /\b(tasks?)\b/g,
+            /\b(patients?)\b/g,
+            /\b(doctors?)\b/g,
+            /\b(appointments?)\b/g,
+            /\b(students?)\b/g,
+            /\b(teachers?)\b/g,
+            /\b(courses?)\b/g,
+            /\b(products?)\b/g,
+            /\b(customers?)\b/g,
+            /\b(orders?)\b/g,
+            /\b(users?)\b/g,
+            /\b(books?)\b/g,
+            /\b(members?)\b/g,
+            /\b(borrowings?)\b/g
+        ];
+        
+        entityPatterns.forEach(pattern => {
+            const matches = lowerResponse.match(pattern);
+            if (matches) {
+                matches.forEach(match => {
+                    const singular = match.endsWith('s') ? match.slice(0, -1) : match;
+                    const plural = singular + 's';
+                    if (!entities.includes(plural)) {
+                        entities.push(plural);
+                    }
+                });
+            }
         });
         
-        svg += `</svg>`;
-        return svg;
+        return entities;
     }
     
-    generateSchemaFromText(text) {
-        return {
-            name: 'Dynamic Schema',
-            tables: [{
-                name: 'data',
+    buildSchemaFromEntities(entities, originalText) {
+        const tables = [];
+        const lowerText = originalText.toLowerCase();
+        
+        entities.forEach(entity => {
+            const table = {
+                name: entity,
                 columns: [
                     { name: 'id', type: 'SERIAL PRIMARY KEY' },
-                    { name: 'name', type: 'VARCHAR(255)' },
-                    { name: 'created_at', type: 'TIMESTAMP DEFAULT NOW()' }
+                    { name: 'name', type: 'VARCHAR(255) NOT NULL' }
                 ]
-            }]
+            };
+            
+            // Add entity-specific columns
+            if (entity === 'projects') {
+                table.columns.push(
+                    { name: 'start_date', type: 'DATE' },
+                    { name: 'end_date', type: 'DATE' },
+                    { name: 'status', type: 'VARCHAR(50) DEFAULT \'planning\'' },
+                    { name: 'budget', type: 'DECIMAL(12,2)' }
+                );
+            } else if (entity === 'clients' || entity === 'customers') {
+                table.columns.push(
+                    { name: 'email', type: 'VARCHAR(255) UNIQUE' },
+                    { name: 'phone', type: 'VARCHAR(20)' },
+                    { name: 'address', type: 'TEXT' }
+                );
+            } else if (entity === 'contractors') {
+                table.columns.push(
+                    { name: 'specialty', type: 'VARCHAR(100)' },
+                    { name: 'contact_info', type: 'VARCHAR(255)' },
+                    { name: 'hourly_rate', type: 'DECIMAL(8,2)' }
+                );
+            } else if (entity === 'materials') {
+                table.columns.push(
+                    { name: 'quantity', type: 'INTEGER DEFAULT 0' },
+                    { name: 'cost_per_unit', type: 'DECIMAL(10,2)' },
+                    { name: 'supplier', type: 'VARCHAR(255)' }
+                );
+            } else if (entity === 'tasks') {
+                table.columns.push(
+                    { name: 'description', type: 'TEXT' },
+                    { name: 'due_date', type: 'DATE' },
+                    { name: 'status', type: 'VARCHAR(50) DEFAULT \'not_started\'' },
+                    { name: 'assigned_to', type: 'INTEGER' }
+                );
+            }
+            
+            table.columns.push({ name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' });
+            tables.push(table);
+        });
+        
+        return {
+            name: this.generateSchemaNameFromText(originalText),
+            tables: tables.length > 0 ? tables : this.generateIntelligentSchema(originalText).tables
         };
+    }
+    
+    generateSchemaNameFromText(text) {
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes('house') || lowerText.includes('building') || lowerText.includes('construction')) {
+            return 'Construction Management System';
+        }
+        if (lowerText.includes('hospital') || lowerText.includes('medical')) {
+            return 'Hospital Management System';
+        }
+        if (lowerText.includes('school') || lowerText.includes('education')) {
+            return 'School Management System';
+        }
+        return 'Custom Management System';
+    }
+    
+    generateSchemaFromConversation(aiResponses, userInputs) {
+        const combinedText = aiResponses + ' ' + userInputs;
+        const entities = this.extractEntitiesFromResponse(combinedText);
+        
+        if (entities.length > 0) {
+            return this.buildSchemaFromEntities(entities, combinedText);
+        }
+        
+        // Fallback to intelligent schema based on user inputs
+        return this.generateIntelligentSchema(userInputs);
     }
     
     cleanup() {
@@ -630,7 +849,7 @@ class VideoAgentClient {
         this.agentSession = null;
         this.isRecording = false;
         this.recognition = null;
-        this.currentSchema = null;
+        // Keep conversationData and currentSchema for Generated Solutions
         this.disableExportButtons();
     }
 

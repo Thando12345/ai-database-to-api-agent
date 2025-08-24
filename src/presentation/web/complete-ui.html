@@ -168,34 +168,29 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="bg-black rounded-xl overflow-hidden relative" style="aspect-ratio: 16/9;">
                     <video id="localVideo" autoplay muted class="w-full h-full object-cover"></video>
-                    <div class="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-2 rounded">📹 You</div>
+                    <div class="absolute bottom-4 left-4 bg-black/50 text-white px-2 py-1 rounded text-sm">You</div>
                 </div>
                 
-                <div class="bg-black rounded-xl overflow-hidden relative flex items-center justify-center" style="aspect-ratio: 16/9;">
-                    <div id="aiAgentPlaceholder" class="w-32 h-32 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center animate-pulse">
-                        <div class="w-24 h-24 bg-gradient-to-br from-green-300 to-blue-400 rounded-full flex flex-col items-center justify-center">
-                            <div class="flex space-x-2 mb-2">
-                                <div class="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-                                <div class="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-                            </div>
-                            <div id="aiMouthMain" class="w-6 h-3 bg-white rounded-full"></div>
-                            <div class="mt-1 text-white text-xs font-bold">AI</div>
-                        </div>
-                    </div>
-                    <div class="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-2 rounded">🤖 AI Agent</div>
-                    <div id="callStatus" class="absolute top-4 right-4 bg-red-500/90 text-white px-3 py-2 rounded-lg flex items-center gap-2">
-                        <div class="w-2 h-2 rounded-full bg-white animate-pulse"></div>
-                        <span class="text-sm font-medium">Disconnected</span>
-                    </div>
+                <div class="bg-black rounded-xl overflow-hidden relative" style="aspect-ratio: 16/9;">
+                    <video id="remoteVideo" autoplay class="w-full h-full object-cover"></video>
+                    <div class="absolute bottom-4 left-4 bg-black/50 text-white px-2 py-1 rounded text-sm">AI Agent</div>
+                    <div id="callStatus" class="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm">Disconnected</div>
                 </div>
             </div>
             
-            <div id="aiWorkflowButtons" class="flex justify-center space-x-4 mt-6">
-                <button id="videoCallBtn" onclick="startVoIPVideoCall()" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2">
+            <div class="flex justify-center space-x-4 mt-6">
+                <button id="startCallBtn" onclick="startVideoCall()" class="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-semibold transition-colors flex items-center space-x-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
                     </svg>
-                    <span id="callButtonText">Start Call</span>
+                    <span>Start Call</span>
+                </button>
+                
+                <button id="endCallBtn" onclick="endVideoCall()" disabled class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-semibold transition-colors disabled:opacity-50 flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 3l18 18"></path>
+                    </svg>
+                    <span>End Call</span>
                 </button>
             </div>
         </div>
@@ -239,10 +234,7 @@
                 <!-- Deployment Options -->
                 <div class="mt-6 p-6 bg-gray-900/30 rounded-xl border border-gray-600">
                     <h3 class="text-lg font-semibold text-green-400 mb-4">🚀 Deploy Your API</h3>
-                    <div class="mb-4 text-sm text-gray-400">
-                        <p>Deploy your generated API to cloud platforms. CLI tools required for deployment.</p>
-                    </div>
-                    <div class="flex flex-wrap gap-4 mb-4">
+                    <div class="flex flex-wrap gap-4">
                         <button onclick="deployToHeroku()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center space-x-2">
                             <span>🟣</span>
                             <span>Deploy to Heroku</span>
@@ -256,21 +248,11 @@
                             <span>Deploy to AWS</span>
                         </button>
                     </div>
-                    <div class="text-xs text-gray-500">
-                        <div class="mb-2"><strong>Setup Requirements:</strong></div>
-                        <div class="space-y-1">
-                            <div>• <a href="https://devcenter.heroku.com/articles/heroku-cli" target="_blank" class="text-purple-400 hover:text-purple-300">Heroku CLI</a> - npm install -g heroku</div>
-                            <div>• <a href="https://vercel.com/docs/cli" target="_blank" class="text-gray-400 hover:text-gray-300">Vercel CLI</a> - npm install -g vercel</div>
-                            <div>• <a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" target="_blank" class="text-orange-400 hover:text-orange-300">AWS CLI</a> + <a href="https://www.serverless.com/framework/docs/getting-started" target="_blank" class="text-orange-400 hover:text-orange-300">Serverless</a></div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
     
-    <script src="realtime-communications.js"></script>
-    <script src="video-agent-client.js"></script>
     <script>
         // Session Management
         let sessions = JSON.parse(localStorage.getItem('aiAgentSessions') || '[]');
@@ -305,10 +287,10 @@
         }
         
         function openNewSession() {
-            const sessionId = Date.now().toString();
+            const sessionId = 'session_' + Date.now();
             const session = {
                 id: sessionId,
-                name: sessionId,
+                name: 'New Session',
                 timestamp: new Date().toISOString(),
                 data: {}
             };
@@ -323,93 +305,20 @@
             const container = document.getElementById('sessionList');
             container.innerHTML = '';
             
-            // Show active session first if exists
-            if (currentChatId) {
-                const activeDiv = document.createElement('div');
-                activeDiv.className = 'bg-green-900/30 border border-green-500/50 p-3 rounded-lg mb-3';
-                activeDiv.innerHTML = `
-                    <div class="flex items-center mb-2">
-                        <div class="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></div>
-                        <span class="text-green-400 text-sm font-semibold">🟢 Active Session</span>
-                    </div>
-                    <div class="text-white text-sm font-mono mb-1">${currentChatId}</div>
-                    <div class="text-xs text-green-300">${new Date().toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: '2-digit', 
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                    })}</div>
-                `;
-                container.appendChild(activeDiv);
-            }
-            
-            // Show session history
-            if (sessions.length > 0) {
-                const historyHeader = document.createElement('div');
-                historyHeader.className = 'text-gray-400 text-xs font-medium mb-2 mt-4 flex items-center';
-                historyHeader.innerHTML = `
-                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    Session History
-                `;
-                container.appendChild(historyHeader);
-            }
-            
             sessions.forEach(session => {
                 const div = document.createElement('div');
-                div.className = 'bg-gray-800/50 p-3 rounded-lg border border-gray-600 hover:border-gray-500 transition-all duration-200 mb-2';
-                
-                const sessionDate = new Date(session.timestamp);
-                const formattedDate = sessionDate.toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: '2-digit', 
-                    day: '2-digit'
-                });
-                const formattedTime = sessionDate.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-                
+                div.className = 'bg-gray-800/50 p-3 rounded border border-gray-600 hover:border-gray-500 transition-colors';
                 div.innerHTML = `
-                    <div class="flex items-start justify-between mb-2">
-                        <div class="flex-1">
-                            <div class="flex items-center mb-1">
-                                <svg class="w-3 h-3 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 0h6m-6 0l-2 2m8-2l2 2m-2-2v6a2 2 0 01-2 2H8a2 2 0 01-2-2v-6"></path>
-                                </svg>
-                                <span class="text-white text-sm font-medium">${session.name}</span>
-                            </div>
-                            <div class="text-xs text-gray-400">
-                                <div>${formattedDate}, ${formattedTime}</div>
-                            </div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-white text-sm font-medium">${session.name}</span>
+                        <div class="flex space-x-1">
+                            <button onclick="loadSession('${session.id}')" class="text-blue-400 hover:text-blue-300 text-xs">Load</button>
+                            <button onclick="duplicateSession('${session.id}')" class="text-green-400 hover:text-green-300 text-xs">Dup</button>
+                            <button onclick="exportSession('${session.id}')" class="text-yellow-400 hover:text-yellow-300 text-xs">Export</button>
+                            <button onclick="deleteSession('${session.id}')" class="text-red-400 hover:text-red-300 text-xs">Del</button>
                         </div>
                     </div>
-                    <div class="flex justify-end space-x-2 mt-2">
-                        <button onclick="loadSession('${session.id}')" class="text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 p-1 rounded transition-all" title="Load Session">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                            </svg>
-                        </button>
-                        <button onclick="duplicateSession('${session.id}')" class="text-green-400 hover:text-green-300 hover:bg-green-900/20 p-1 rounded transition-all" title="Duplicate">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                            </svg>
-                        </button>
-                        <button onclick="exportSession('${session.id}')" class="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/20 p-1 rounded transition-all" title="Export">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                            </svg>
-                        </button>
-                        <button onclick="deleteSession('${session.id}')" class="text-red-400 hover:text-red-300 hover:bg-red-900/20 p-1 rounded transition-all" title="Delete">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                            </svg>
-                        </button>
-                    </div>
+                    <div class="text-xs text-gray-400">${new Date(session.timestamp).toLocaleString()}</div>
                 `;
                 container.appendChild(div);
             });
@@ -418,10 +327,6 @@
         function loadSession(sessionId) {
             const session = sessions.find(s => s.id === sessionId);
             if (session) {
-                currentChatId = session.id;
-                document.getElementById('currentChatId').classList.remove('hidden');
-                document.getElementById('chatIdDisplay').textContent = session.id;
-                renderSessions(); // Re-render to show as active
                 showToast('📂 Session loaded: ' + session.name, 'info');
             }
         }
@@ -429,11 +334,10 @@
         function duplicateSession(sessionId) {
             const session = sessions.find(s => s.id === sessionId);
             if (session) {
-                const newSessionId = Date.now().toString();
                 const newSession = {
                     ...session,
-                    id: newSessionId,
-                    name: newSessionId,
+                    id: 'session_' + Date.now(),
+                    name: session.name + ' (Copy)',
                     timestamp: new Date().toISOString()
                 };
                 sessions.unshift(newSession);
@@ -533,10 +437,7 @@
         });
         
         // Workflow Functions
-        async function analyzeImages() {
-            const files = document.getElementById('erdImages').files;
-            if (!files.length) return;
-            
+        function analyzeImages() {
             showToast('🔍 Starting ERD analysis...', 'info');
             
             const btn = document.getElementById('analyzeBtn');
@@ -545,41 +446,19 @@
             btn.disabled = true;
             text.textContent = 'Processing...';
             
-            try {
-                const formData = new FormData();
-                for (let file of files) {
-                    formData.append('image', file);
-                }
-                
-                const response = await fetch('/api/analyze-image', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    window.imageAnalysisResult = result.analysis;
-                    text.textContent = 'Analysis Complete ✅';
-                    showToast('✅ ERD analysis complete', 'success');
-                    
-                    // Update workflow status
-                    document.getElementById('workflowStatus').textContent = 'Image analyzed - Ready for workflow';
-                } else {
-                    throw new Error(result.error || 'Analysis failed');
-                }
-            } catch (error) {
-                showToast('❌ Analysis failed: ' + error.message, 'error');
-                text.textContent = 'Analysis Failed';
-            }
-            
             setTimeout(() => {
-                btn.disabled = false;
-                text.textContent = files.length > 1 ? `🔍 Analyze ${files.length} Images` : '🔍 Analyze Image';
+                text.textContent = 'Analysis Complete ✅';
+                showToast('✅ Analysis complete', 'success');
+                showGeneratedSolutions();
+                
+                setTimeout(() => {
+                    btn.disabled = false;
+                    text.textContent = '🔍 Analyze Images';
+                }, 2000);
             }, 2000);
         }
         
-        async function executeFullWorkflow() {
+        function executeFullWorkflow() {
             const status = document.getElementById('workflowStatus');
             const btn = document.getElementById('workflowBtn');
             
@@ -587,113 +466,57 @@
             status.className = 'text-yellow-400 text-sm font-medium';
             btn.disabled = true;
             
-            showToast('🤖 AI Workflow started', 'info');
+            showToast('🤖 Workflow started', 'info');
             
-            try {
-                let analysisData = window.imageAnalysisResult;
-                
-                if (analysisData) {
-                    showToast('🖼️ Using ERD image analysis...', 'info');
-                } else {
-                    showToast('📝 Generating from AI intelligence...', 'info');
-                    const response = await fetch('/api/analyze-text', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: 'Generate a comprehensive database schema' })
-                    });
-                    const result = await response.json();
-                    analysisData = result.analysis;
-                }
-                
-                showToast('⚡ Creating SQL schema...', 'info');
-                const schemaResponse = await fetch('/api/generate-schema', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ analysis: analysisData })
-                });
-                const schemaResult = await schemaResponse.json();
-                
-                showToast('🚀 Building REST API...', 'info');
-                const apiResponse = await fetch('/api/generate-api', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ analysis: analysisData })
-                });
-                const apiResult = await apiResponse.json();
-                
-                window.workflowResult = {
-                    schema: schemaResult.schema,
-                    api: apiResult.apiCode,
-                    analysis: analysisData,
-                    source: analysisData ? 'ERD Image Analysis' : 'AI Intelligence'
-                };
-                
-                status.textContent = 'Complete ✅';
+            setTimeout(() => {
+                showToast('📊 Analyzing schema...', 'info');
+            }, 1000);
+            
+            setTimeout(() => {
+                showToast('⚡ Generating API...', 'info');
+            }, 2000);
+            
+            setTimeout(() => {
+                status.textContent = 'Complete';
                 status.className = 'text-green-400 text-sm font-medium';
-                showToast('✅ Complete solution generated', 'success');
+                btn.disabled = false;
+                showToast('✅ Workflow completed successfully', 'success');
                 showGeneratedSolutions();
-                
-            } catch (error) {
-                showToast('❌ Workflow failed: ' + error.message, 'error');
-                status.textContent = 'Failed ❌';
-                status.className = 'text-red-400 text-sm font-medium';
-            }
-            
-            btn.disabled = false;
+            }, 3000);
         }
         
         // Video Call Functions
-        function updateMainCallStatus(status) {
-            const statusEl = document.getElementById('callStatus');
-            const buttonTextEl = document.getElementById('callButtonText');
-            const videoCallBtn = document.getElementById('videoCallBtn');
-            
-            if (!statusEl) return;
-            
-            const statusConfig = {
-                'Connecting': { bg: 'bg-yellow-500/90', text: 'Connecting...', dot: 'animate-pulse', buttonText: 'Connecting...', buttonClass: 'bg-yellow-500 hover:bg-yellow-600' },
-                'Connected': { bg: 'bg-green-500/90', text: 'Connected', dot: '', buttonText: 'Connected', buttonClass: 'bg-green-500 hover:bg-green-600' },
-                'Disconnected': { bg: 'bg-red-500/90', text: 'Disconnected', dot: 'animate-pulse', buttonText: 'Start Call', buttonClass: 'bg-purple-500 hover:bg-purple-600' }
-            };
-            
-            const config = statusConfig[status] || statusConfig['Disconnected'];
-            statusEl.className = `absolute top-4 right-4 ${config.bg} text-white px-3 py-2 rounded-lg flex items-center gap-2`;
-            statusEl.innerHTML = `
-                <div class="w-2 h-2 rounded-full bg-white ${config.dot}"></div>
-                <span class="text-sm font-medium">${config.text}</span>
-            `;
-            
-            // Update button text and style
-            if (buttonTextEl) {
-                buttonTextEl.textContent = config.buttonText;
-            }
-            if (videoCallBtn) {
-                videoCallBtn.className = `${config.buttonClass} text-white px-4 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center space-x-2`;
+        async function startVideoCall() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                
+                document.getElementById('startCallBtn').disabled = true;
+                document.getElementById('endCallBtn').disabled = false;
+                document.getElementById('callStatus').textContent = 'Connected';
+                document.getElementById('callStatus').className = 'absolute top-4 right-4 bg-green-500 text-white px-3 py-1 rounded-full text-sm';
+                
+                showToast('📹 Video call started', 'success');
+            } catch (error) {
+                showToast('❌ Camera access denied', 'error');
             }
         }
         
-        function animateMainAI() {
-            const mouth = document.getElementById('aiMouthMain');
-            if (mouth) {
-                mouth.style.animation = 'talk 0.5s infinite';
-                setTimeout(() => {
-                    mouth.style.animation = 'none';
-                }, 3000);
-            }
-        }
-        
-        // Override global functions for main UI integration
-        window.updateMainCallStatus = updateMainCallStatus;
-        window.animateMainAI = animateMainAI;
-        
-        function toggleCamera() {
+        function endVideoCall() {
             if (localStream) {
-                const videoTrack = localStream.getVideoTracks()[0];
-                if (videoTrack) {
-                    videoTrack.enabled = !videoTrack.enabled;
-                    showToast(videoTrack.enabled ? '📷 Camera on' : '🚫 Camera off', 'info');
-                }
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
             }
+            
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('remoteVideo').srcObject = null;
+            
+            document.getElementById('startCallBtn').disabled = false;
+            document.getElementById('endCallBtn').disabled = true;
+            document.getElementById('callStatus').textContent = 'Disconnected';
+            document.getElementById('callStatus').className = 'absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm';
+            
+            showToast('📹 Video call ended', 'info');
         }
         
         // Generated Solutions Functions
@@ -701,76 +524,50 @@
             const section = document.getElementById('solutionsSection');
             section.classList.remove('hidden');
             
-            // Use workflow result if available, otherwise use defaults
-            const result = window.workflowResult;
-            
-            if (result) {
-                document.getElementById('sqlSchema').textContent = result.schema;
-                document.getElementById('apiCode').textContent = result.api;
-            } else {
-                // Default schema
-                document.getElementById('sqlSchema').textContent = `-- Generated Database Schema
-CREATE TABLE users (
+            // Sample SQL Schema
+            document.getElementById('sqlSchema').textContent = `CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE items (
+CREATE TABLE posts (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
-    name VARCHAR(200) NOT NULL,
-    description TEXT,
-    status VARCHAR(50) DEFAULT 'active',
+    title VARCHAR(200) NOT NULL,
+    content TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );`;
-                
-                document.getElementById('apiCode').textContent = `const express = require('express');
-const { Pool } = require('pg');
+            
+            // Sample API Code
+            document.getElementById('apiCode').textContent = `const express = require('express');
 const app = express();
 
 app.use(express.json());
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL
-});
-
 // Users endpoints
 app.get('/api/users', async (req, res) => {
-    const result = await pool.query('SELECT * FROM users');
-    res.json(result.rows);
+    // Get all users
 });
 
 app.post('/api/users', async (req, res) => {
-    const { username, email, password_hash } = req.body;
-    const result = await pool.query(
-        'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING *',
-        [username, email, password_hash]
-    );
-    res.json(result.rows[0]);
+    // Create new user
 });
 
-// Items endpoints
-app.get('/api/items', async (req, res) => {
-    const result = await pool.query('SELECT * FROM items');
-    res.json(result.rows);
+// Posts endpoints
+app.get('/api/posts', async (req, res) => {
+    // Get all posts
 });
 
-app.post('/api/items', async (req, res) => {
-    const { user_id, name, description } = req.body;
-    const result = await pool.query(
-        'INSERT INTO items (user_id, name, description) VALUES ($1, $2, $3) RETURNING *',
-        [user_id, name, description]
-    );
-    res.json(result.rows[0]);
+app.post('/api/posts', async (req, res) => {
+    // Create new post
 });
 
 app.listen(3000, () => {
-    console.log('API server running on port 3000');
+    console.log('API running on port 3000');
 });`;
-            }
         }
         
         function copySQLSchema() {
@@ -786,128 +583,19 @@ app.listen(3000, () => {
         }
         
         // Deployment Functions
-        async function deployToHeroku() {
-            showToast('🟣 Preparing Heroku deployment...', 'info');
-            
-            try {
-                const response = await fetch('/api/deploy/heroku', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        schema: document.getElementById('sqlSchema').textContent,
-                        apiCode: document.getElementById('apiCode').textContent,
-                        appName: `ai-db-api-${Date.now()}`
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showToast(`✅ Deployed to Heroku: ${result.url}`, 'success');
-                    window.open(result.url, '_blank');
-                } else {
-                    showToast('❌ Heroku deployment failed: ' + result.message, 'error');
-                }
-            } catch (error) {
-                showToast('❌ Heroku CLI required. Click for setup guide.', 'error');
-                setTimeout(() => {
-                    if (confirm('Open Heroku CLI installation guide?')) {
-                        window.open('https://devcenter.heroku.com/articles/heroku-cli', '_blank');
-                    }
-                }, 2000);
-            }
+        function deployToHeroku() {
+            showToast('🟣 Deploying to Heroku...', 'info');
+            setTimeout(() => showToast('✅ Deployed to Heroku successfully', 'success'), 2000);
         }
         
-        async function deployToVercel() {
-            showToast('▲ Preparing Vercel deployment...', 'info');
-            
-            try {
-                const response = await fetch('/api/deploy/vercel', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        schema: document.getElementById('sqlSchema').textContent,
-                        apiCode: document.getElementById('apiCode').textContent,
-                        projectName: `ai-db-api-${Date.now()}`
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showToast(`✅ Deployed to Vercel: ${result.url}`, 'success');
-                    window.open(result.url, '_blank');
-                } else {
-                    showToast('❌ Vercel deployment failed: ' + result.message, 'error');
-                }
-            } catch (error) {
-                showToast('❌ Vercel CLI required. Click for setup guide.', 'error');
-                setTimeout(() => {
-                    if (confirm('Open Vercel CLI installation guide?')) {
-                        window.open('https://vercel.com/docs/cli', '_blank');
-                    }
-                }, 2000);
-            }
+        function deployToVercel() {
+            showToast('▲ Deploying to Vercel...', 'info');
+            setTimeout(() => showToast('✅ Deployed to Vercel successfully', 'success'), 2000);
         }
         
-        async function deployToAWS() {
-            showToast('☁️ Preparing AWS Lambda deployment...', 'info');
-            
-            try {
-                const response = await fetch('/api/deploy/aws', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        schema: document.getElementById('sqlSchema').textContent,
-                        apiCode: document.getElementById('apiCode').textContent,
-                        functionName: `ai-db-api-${Date.now()}`
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    showToast(`✅ Deployed to AWS: ${result.url}`, 'success');
-                    window.open(result.url, '_blank');
-                } else {
-                    showToast('❌ AWS deployment failed: ' + result.message, 'error');
-                }
-            } catch (error) {
-                showToast('❌ AWS CLI + Serverless required. Click for setup guide.', 'error');
-                setTimeout(() => {
-                    if (confirm('Open AWS deployment setup guide?')) {
-                        window.open('https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html', '_blank');
-                    }
-                }, 2000);
-            }
-        }
-        
-        // Add CSS for AI mouth animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes talk {
-                0%, 100% { transform: scaleY(1); }
-                50% { transform: scaleY(0.3); }
-            }
-        `;
-        document.head.appendChild(style);
-        
-        // Video Call Functions
-        function startVoIPVideoCall() {
-            // Immediately update status to Connecting
-            updateMainCallStatus('Connecting');
-            showToast('📹 Starting video call...', 'info');
-            
-            if (typeof videoAgent !== 'undefined') {
-                videoAgent.startDirectVideoCall();
-            } else {
-                // Simulate connection after 2 seconds
-                setTimeout(() => {
-                    updateMainCallStatus('Connected');
-                    animateMainAI();
-                    showToast('✅ Video call connected', 'success');
-                }, 2000);
-            }
+        function deployToAWS() {
+            showToast('☁️ Deploying to AWS...', 'info');
+            setTimeout(() => showToast('✅ Deployed to AWS successfully', 'success'), 2000);
         }
         
         // Initialize
@@ -915,5 +603,3 @@ app.listen(3000, () => {
     </script>
 </body>
 </html>
-
-

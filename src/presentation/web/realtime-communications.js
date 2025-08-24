@@ -333,12 +333,7 @@ function createVoIPButtons() {
     const voipContainer = document.createElement('div');
     voipContainer.className = 'fixed bottom-4 right-4 flex space-x-3 z-40';
     voipContainer.innerHTML = `
-        <button id="voipCallBtn" onclick="startVoIPCall()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-full shadow-lg transition-colors">
-            📞 VoIP Call
-        </button>
-        <button id="voipVideoBtn" onclick="startVoIPVideoCall()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-full shadow-lg transition-colors">
-            📹 VoIP Video
-        </button>
+  
     `;
     document.body.appendChild(voipContainer);
 }
